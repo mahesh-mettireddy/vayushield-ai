@@ -16,13 +16,13 @@ describe('India CPCB NAQI Engine', () => {
     expect(result.dominantPollutant).toBe('pm25');
   });
 
-  it('handles continuous decimal breakpoints without gaps (Goldfish Catch #2)', () => {
+  it('handles continuous decimal breakpoints without gaps', () => {
     expect(calculatePollutantSubIndex('pm25', 30)).toBe(50);
     expect(calculatePollutantSubIndex('pm25', 30.4)).toBeGreaterThanOrEqual(51);
     expect(calculatePollutantSubIndex('pm25', 30.4)).toBeLessThanOrEqual(52);
   });
 
-  it('converts Open-Meteo CO from µg/m³ to mg/m³ before CPCB lookup (Goldfish Catch #1)', () => {
+  it('converts Open-Meteo CO from µg/m³ to mg/m³ before CPCB lookup', () => {
     const result = calculateCpcbAqi({
       pm25: 20,
       pm10: 30,

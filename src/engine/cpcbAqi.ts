@@ -9,8 +9,8 @@ interface BreakpointBand {
 
 /**
  * India CPCB National AQI (NAQI) continuous breakpoint table.
- * Upper bounds are contiguous to prevent floating-point gaps (Goldfish Review Finding #2).
- * Note: CO breakpoints are in mg/m³; raw µg/m³ inputs are divided by 1000 before lookup (Finding #1).
+ * Upper bounds are contiguous to cover fractional concentrations.
+ * CO breakpoints are in mg/m³. Raw µg/m³ inputs are divided by 1000 before lookup.
  */
 const CPCB_BREAKPOINTS: Record<PollutantKey, BreakpointBand[]> = {
   pm25: [

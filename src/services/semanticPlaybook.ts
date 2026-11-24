@@ -58,7 +58,6 @@ let cachedExtractor: FeatureExtractor | null = null;
 
 /**
  * Lazily loads Hugging Face Transformers.js (WASM) in the browser only when the user opts in.
- * Zero initial bundle bloat and zero server API cost (Goldfish Review Finding #5).
  */
 export async function rankPlaybookWithLocalHf(
   query: string,

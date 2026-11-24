@@ -1,8 +1,6 @@
-# Design Document — VayuShield AI
+# VayuShield AI architecture
 
-**Status**: Ready for Goldfish Cold Review  
-**Architecture**: Single-repo React 19 + Vite + TypeScript + Tailwind CSS + Vercel Serverless Functions (`/api/*`)  
-**Target Grading Rubric**: Code Quality, Security, Efficiency (`< 10 MB` repo), Testing, Accessibility (WCAG 2.1 AA), Problem Statement Alignment.
+VayuShield AI uses React, Vite, TypeScript, and Tailwind CSS for the frontend. Vercel Functions serve the API routes under `/api/`.
 
 ---
 
@@ -12,7 +10,7 @@
 Browser (React 19 + Vite + TypeScript + Tailwind CSS)
   ├── LocationSearch (Open-Meteo Geocoding via /api/air-quality?q=... or city presets)
   ├── AqiHero & PollutantGrid (CPCB NAQI Engine -> 0-500 score, 6 bands, dominant pollutant)
-  ├── CleanAirWindowChart (24h hourly PM2.5 forecast -> safest 2h outdoor/ventilation window)
+  ├── CleanAirWindowChart (24-hour PM2.5 forecast -> lowest-average two-hour window)
   ├── ChoiceImpactSimulator (Deterministic PM2.5 exposure & CO2 savings calculator)
   ├── RoutinePlanner (Calls POST /api/assistant -> structured JSON routine + hacks + impact)
   └── IndoorPlaybookSearch (Keyword + optional lazy-loaded @huggingface/transformers WASM embeddings)
@@ -22,14 +20,14 @@ Vercel Serverless Functions (/api/*)
   ├── GET  /api/air-quality?lat=&lon=&city=
   │     ├── Open-Meteo Air Quality API (hourly PM2.5, PM10, NO2, SO2, O3, CO; timezone=auto)
   │     ├── Optional OpenAQ v3 overlay (if OPENAQ_API_KEY env var is present)
-  │     └── 15-minute in-memory TTL cache + Cache-Control: s-maxage=900
+  │     └── Cache expires after 15 minutes or when the first forecast hour begins
   └── POST /api/assistant
         ├── Zod request validation + prompt-injection sanitization + IP rate limiter
         ├── Failover Chain (strict descending capability):
         │     1. Gemini 2.5 Flash (GEMINI_API_KEY)
         │     2. Hugging Face Inference Providers router.huggingface.co/v1 (HF_TOKEN)
         │     3. Groq OpenAI-compatible API (GROQ_API_KEY)
-        │     4. Deterministic Local Routine Synthesizer (Zero-Key Guaranteed Fallback)
+        │     4. Built-in deterministic routine generator
         └── Zod output validation -> strict typed JSON response
 ```
 
@@ -58,7 +56,7 @@ Overall NAQI = $\max(I_p)$ across available pollutants, clamped to `[0, 500]`, r
 **Critical Unit Conversion Rule**:
 - Open-Meteo returns `carbon_monoxide` in **`µg/m³`**.
 - CPCB CO breakpoints are in **`mg/m³`**.
-- `coMgM3 = coUgM3 / 1000` MUST be applied before calling `calculateSubIndex('co', coMgM3)`.
+- Divide the raw value by `1000` before passing it to `calculatePollutantSubIndex`.
 
 ### 2.2 24-Hour Clean-Air Window Finder (`src/engine/cleanAirWindow.ts`)
 - Inputs: the next 24 hourly forecast entries (`{ time, pm25, pm10, aqi }`) strictly after the current instant, displayed in the city’s timezone (`timezone=auto`).
@@ -100,16 +98,17 @@ Pure deterministic model translating household choices into verifiable daily/ann
   - `activeChoices`: string[] (max 10)
   - `impactSummary`: `{ exposureReductionPct: number, annualCo2SavedKg: number }`
   - `userQuestion`: optional string (max 300 chars, stripped of control chars & prompt-injection delimiters)
-- Rate Limit: In-memory sliding window (20 requests / 5 min per IP) returning `429` with `Retry-After`.
+- The function allows up to 20 requests per IP in a five-minute window per instance. It returns `429` with `Retry-After` when that limit is reached.
 - Provider Failover Order:
   1. **Gemini 2.5 Flash**: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent` with `responseMimeType: "application/json"`.
   2. **Hugging Face Inference Providers**: `https://router.huggingface.co/v1/chat/completions` (`model: process.env.HF_MODEL || 'Qwen/Qwen2.5-72B-Instruct'`).
   3. **Groq**: `https://api.groq.com/openai/v1/chat/completions` (`model: 'llama-3.3-70b-versatile'`).
   4. **Deterministic Fallback**: Local TypeScript routine generator grounded in exact CPCB band + household profile + choice simulator numbers.
-- Response Schema (`AssistantPlanSchema`):
+- The response contains a validated plan, the provider that generated it, and its display label.
   ```ts
   {
     provider: 'gemini' | 'huggingface' | 'groq' | 'deterministic-fallback',
+    modelLabel: string,
     summary: string,
     dailyRoutine: Array<{ timeBlock: string; action: string; whyItHelps: string }>,
     indoorHacks: Array<{ title: string; steps: string; costTier: string; impact: string }>,
@@ -136,12 +135,12 @@ Pure deterministic model translating household choices into verifiable daily/ann
 
 ---
 
-## 5. Testing & CI Plan
+## 5. Tests and CI
 - **Unit Tests**:
   - `src/test/cpcbAqi.test.ts`: Exact boundary values, decimal boundary continuity (`30.4`), CO `µg/m³ → mg/m³` conversion, severe clamping (`> 500`), dominant pollutant selection.
   - `src/test/cleanAirWindow.test.ts`: Finds true minimum/maximum 2-hour windows, handles flat series and short arrays gracefully.
   - `src/test/impactCalculator.test.ts`: Commute CO₂ math, multiplicative indoor exposure cap (`<= 92%`), zero-km edge cases.
   - `src/test/providerFailover.test.ts`: Verifies Gemini → Hugging Face Router → Groq → Deterministic fallback order and schema validation.
 - **UI & Accessibility Tests**:
-  - `src/test/App.a11y.test.tsx`: Renders full app with mocked air quality data, verifies interactive simulator updates and zero WCAG violations via `vitest-axe`.
+  - `src/test/App.a11y.test.tsx` renders the app with mocked telemetry, generates a fallback routine, and checks the result with `vitest-axe`.
 - **CI (`.github/workflows/ci.yml`)**: Runs `npm ci`, `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`, and enforces repo size `< 10 MB`.
