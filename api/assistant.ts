@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { VercelRequest, VercelResponse } from './_lib/httpTypes';
 import { generatePlanWithFailover } from './_lib/providers';
 import { AssistantRequestSchema, checkRateLimit } from './_lib/schemas';
 

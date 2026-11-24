@@ -71,6 +71,8 @@ export async function rankPlaybookWithLocalHf(
 
   if (!cachedExtractor) {
     const transformers = await import('@huggingface/transformers');
+    // The library's WASM cache loads its factory from a blob URL. Use HTTP caching under the app's CSP.
+    transformers.env.useWasmCache = false;
     cachedExtractor = (await transformers.pipeline(
       'feature-extraction',
       'Xenova/all-MiniLM-L6-v2'

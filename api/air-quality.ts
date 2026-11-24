@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { VercelRequest, VercelResponse } from './_lib/httpTypes';
 import { analyzeCleanAirWindows } from '../src/engine/cleanAirWindow';
 import { readOpenMeteoForecast, type OpenMeteoAirData } from '../src/engine/openMeteoForecast';
 import type {
