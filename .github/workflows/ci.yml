@@ -1,0 +1,44 @@
+name: VayuShield AI CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript strict check
+        run: npm run typecheck
+
+      - name: ESLint + jsx-a11y check
+        run: npm run lint
+
+      - name: Unit, Integration & Accessibility tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Verify repo size under 10 MB PromptWars limit
+        run: |
+          SIZE_KB=$(du -sk --exclude=node_modules --exclude=.git --exclude=dist . | cut -f1)
+          echo "Tracked repo size: ${SIZE_KB} KB"
+          if [ "$SIZE_KB" -ge 10000 ]; then
+            echo "ERROR: Repository exceeds 10 MB limit!"
+            exit 1
+          fi
