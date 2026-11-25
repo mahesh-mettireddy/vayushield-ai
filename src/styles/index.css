@@ -84,6 +84,10 @@ summary { cursor: pointer; }
 .hero-verdict { margin-top: .3rem; font-size: .9rem; line-height: 1.5; color: var(--ink); max-width: 36ch; }
 .dominant-reading { margin-top: .85rem; color: var(--muted); font-size: .8rem; }
 .dominant-reading strong { margin-left: .35rem; color: var(--ink); }
+.family-alert { grid-column: 1 / -1; display: flex; align-items: center; gap: .35rem .65rem; flex-wrap: wrap; margin-top: .75rem; }
+.family-alert p { color: var(--teal); font-weight: 650; font-size: .78rem; }
+.family-alert textarea { width: 100%; min-width: 0; resize: vertical; border: 1px solid var(--line);
+  border-radius: 9px; background: var(--white); color: var(--ink); padding: .55rem .65rem; font-size: .83rem; }
 
 .forecast { min-width: 0; }
 .forecast-heading { display: flex; align-items: baseline; justify-content: space-between; gap: .75rem; }
@@ -187,6 +191,21 @@ details[open] > summary .details-arrow { rotate: 180deg; }
 .habit-row input:checked + .switch-track { background: #087151; }
 .habit-row input:checked + .switch-track::after { transform: translateX(14px); }
 .commute-group { margin-top: 1rem; }
+.community-scale { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); align-items: center;
+  gap: .85rem; margin-top: 1rem; padding: .85rem; border: 1px solid var(--line); border-radius: 13px; background: #eef7f2; }
+.community-controls h3 { display: flex; align-items: center; gap: .45rem; font-size: .95rem; font-weight: 750; }
+.community-controls h3 svg { color: var(--teal); }
+.community-controls p { margin-top: .2rem; color: var(--muted); font-size: .78rem; }
+.community-range-label { display: flex; justify-content: space-between; margin-top: .55rem; font-size: .8rem; font-weight: 700; }
+.community-controls input { display: block; width: 100%; min-height: 28px; margin-bottom: .35rem; accent-color: var(--teal); }
+.community-results { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
+.community-results > div { display: flex; flex-direction: column-reverse; justify-content: flex-end;
+  padding: .65rem; border: 1px solid var(--line); border-radius: 10px; background: var(--white); }
+.community-results dt { color: var(--muted); font-size: .73rem; }
+.community-results dd { color: var(--teal); font-size: clamp(1.1rem, 3vw, 1.55rem); font-weight: 750; font-variant-numeric: tabular-nums; }
+@media (max-width: 650px) {
+  .community-scale { grid-template-columns: minmax(0, 1fr); }
+}
 .commute-fields { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .6rem; }
 .commute-fields label { font-weight: 650; font-size: .8rem; }
 .commute-fields select, .commute-fields input { display: block; width: 100%; margin-top: .3rem; }

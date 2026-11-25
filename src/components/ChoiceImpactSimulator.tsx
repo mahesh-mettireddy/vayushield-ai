@@ -1,6 +1,6 @@
-import { Trees } from 'lucide-react';
-import type { CSSProperties } from 'react';
-import { calculateChoiceImpact, COMMUTE_LABELS } from '../engine/impactCalculator';
+import { Building2, Trees } from 'lucide-react';
+import { useState, type CSSProperties } from 'react';
+import { calculateChoiceImpact, calculateCommunityImpact, COMMUTE_LABELS } from '../engine/impactCalculator';
 import type { ChoiceImpactResult, ChoiceToggles, CommuteMode, HouseholdProfile } from '../types/airQuality';
 
 const HABITS: Array<{ key: keyof ChoiceToggles; label: string }> = [
@@ -12,6 +12,12 @@ const HABITS: Array<{ key: keyof ChoiceToggles; label: string }> = [
   { key: 'zeroSmokeIndoor', label: 'Zero-Smoke Home — No Incense / Coils' }
 ];
 const MODES = Object.keys(COMMUTE_LABELS) as CommuteMode[];
+const COMMUNITY_PRESETS = [
+  { count: 1, label: '1 Family' },
+  { count: 25, label: '25 Flats' },
+  { count: 100, label: '100 Flats' }
+];
+const tonnesFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 3 });
 
 interface SimulatorProps {
   profile: HouseholdProfile;
@@ -23,6 +29,8 @@ interface SimulatorProps {
 }
 
 export function ChoiceImpactSimulator({ profile, toggles, impact, hasTelemetry, onProfileChange, onToggleChange }: SimulatorProps) {
+  const [households, setHouseholds] = useState(1);
+  const community = calculateCommunityImpact(impact.annualCo2SavedKg, households);
   const exposure = [
     { name: 'Before', value: impact.baselineDailyExposureUgM3, width: 100 },
     { name: 'After', value: impact.projectedDailyExposureUgM3, width: 100 - impact.exposureReductionPct }
@@ -101,6 +109,29 @@ export function ChoiceImpactSimulator({ profile, toggles, impact, hasTelemetry, 
           </label>
         </div>
       </fieldset>
+
+      <section className="community-scale" aria-labelledby="community-scale-heading">
+        <div className="community-controls">
+          <h3 id="community-scale-heading"><Building2 size={17} aria-hidden="true" /> Community Scale</h3>
+          <p>Estimate the savings if nearby households make the same choices.</p>
+          <div className="community-range-label">
+            <label htmlFor="community-households">Households</label><strong aria-hidden="true">{households}</strong>
+          </div>
+          <input id="community-households" type="range" min={1} max={200} step={1} value={households}
+            aria-valuetext={`${households} ${households === 1 ? 'household' : 'households'}`}
+            onChange={(event) => setHouseholds(event.target.valueAsNumber)} />
+          <div className="pill-row" role="group" aria-label="Community size presets">
+            {COMMUNITY_PRESETS.map(({ count, label }) => (
+              <button className="pill" key={count} type="button" aria-pressed={households === count}
+                onClick={() => setHouseholds(count)}>{label}</button>
+            ))}
+          </div>
+        </div>
+        <dl className="community-results" aria-live="polite" aria-atomic="true">
+          <div><dt>Tonnes CO₂ saved per year</dt><dd>{tonnesFormat.format(community.annualCo2Tonnes)}</dd></div>
+          <div><dt>Mature-tree equivalents per year</dt><dd>{community.treesEquivalent.toLocaleString('en-IN')}</dd></div>
+        </dl>
+      </section>
 
       {impact.breakdown.length > 0 && <details className="impact-breakdown">
         <summary>How the estimates are calculated</summary>

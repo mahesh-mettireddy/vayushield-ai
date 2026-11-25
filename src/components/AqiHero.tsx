@@ -1,7 +1,8 @@
-import { ChevronDown, FlaskConical, MapPin } from 'lucide-react';
-import type { CSSProperties } from 'react';
+import { ChevronDown, Copy, FlaskConical, MapPin } from 'lucide-react';
+import { useState, type CSSProperties } from 'react';
 import { POLLUTANT_LABELS } from '../engine/cpcbAqi';
-import type { AirQualityPayload, PollutantKey } from '../types/airQuality';
+import { formatCommunityAlert } from '../engine/communityAlert';
+import type { AirQualityPayload, ChoiceImpactResult, PollutantKey } from '../types/airQuality';
 import { CleanAirWindowCard } from './CleanAirWindowCard';
 
 const POLLUTANTS: PollutantKey[] = ['pm25', 'pm10', 'no2', 'so2', 'o3', 'co'];
@@ -13,12 +14,29 @@ const PARTICLES = Array.from({ length: 20 }, (_, i) => ({
   '--particle-size': (2 + i % 3) + 'px'
 }) as CSSProperties);
 
-export function AqiHero({ air }: { air: AirQualityPayload }) {
+export function AqiHero({ air, impact }: { air: AirQualityPayload; impact: ChoiceImpactResult }) {
+  const [copyFeedback, setCopyFeedback] = useState<{ text: string; copied: boolean } | null>(null);
   const { location, cpcb, current, groundStation } = air;
   const dominant = POLLUTANT_LABELS[cpcb.dominantPollutant];
   const band = cpcb.category.toLowerCase().replace(' ', '-');
   const verdict = cpcb.advisory.split(/(?<=\.)\s/)[0];
   const particleCount = Math.min(PARTICLES.length, 5 + Math.floor(Math.max(0, current.pm25) / 11));
+  const alertText = formatCommunityAlert(air, impact);
+  const feedback = copyFeedback?.text === alertText ? copyFeedback : null;
+
+  async function copyAlert() {
+    setCopyFeedback(null);
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(alertText);
+        setCopyFeedback({ text: alertText, copied: true });
+        return;
+      }
+    } catch {
+      // Keep the alert available for manual copying when clipboard access is blocked.
+    }
+    setCopyFeedback({ text: alertText, copied: false });
+  }
 
   return (
     <section className="air-hero" data-band={band} aria-labelledby="aqi-status-heading">
@@ -46,6 +64,16 @@ export function AqiHero({ air }: { air: AirQualityPayload }) {
           </div>
           <p className="hero-verdict">{verdict}</p>
           <p className="dominant-reading">Dominant pollutant <strong>{dominant.name}</strong></p>
+          <div className="family-alert">
+            <button type="button" className="button-secondary" onClick={() => void copyAlert()}>
+              <Copy size={16} aria-hidden="true" /> Copy Family Alert
+            </button>
+            <p aria-live="polite">{feedback ? feedback.copied ? 'Copied!' : 'Select and copy the alert text below.' : ''}</p>
+            {feedback && !feedback.copied && (
+              <textarea aria-label="Family alert text" value={alertText} readOnly rows={5}
+                onFocus={(event) => event.currentTarget.select()} />
+            )}
+          </div>
         </div>
         <CleanAirWindowCard key={`${location.lat},${location.lon}`}
           hourly={air.hourly} analysis={air.windowAnalysis} />

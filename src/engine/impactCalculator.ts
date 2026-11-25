@@ -28,6 +28,18 @@ export const COMMUTE_LABELS: Record<CommuteMode, string> = {
 const WORKDAYS_PER_YEAR = 240;
 const KG_CO2_PER_MATURE_TREE_YEAR = 21;
 
+export function calculateCommunityImpact(annualCo2SavedKg: number, households: number) {
+  const count = Number.isFinite(households) ? Math.max(1, Math.floor(households)) : 1;
+  const perHouseholdKg = Number.isFinite(annualCo2SavedKg) ? Math.max(0, annualCo2SavedKg) : 0;
+  const annualCo2Kg = perHouseholdKg * count;
+  return {
+    households: count,
+    annualCo2Tonnes: annualCo2Kg / 1000,
+    annualCo2Kg,
+    treesEquivalent: Math.round((annualCo2Kg / KG_CO2_PER_MATURE_TREE_YEAR) * 10) / 10
+  };
+}
+
 export function calculateChoiceImpact(
   ambientPm25: number,
   profile: HouseholdProfile,
@@ -120,7 +132,7 @@ export function calculateChoiceImpact(
   const projectedDailyExposureUgM3 =
     Math.round(baselineDailyExposureUgM3 * (1 - exposureReductionPct / 100) * 10) / 10;
 
-  const treesEquivalentPerYear = Math.round((annualCo2SavedKg / KG_CO2_PER_MATURE_TREE_YEAR) * 10) / 10;
+  const treesEquivalentPerYear = calculateCommunityImpact(annualCo2SavedKg, 1).treesEquivalent;
 
   return {
     baselineDailyExposureUgM3,

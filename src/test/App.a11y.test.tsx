@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'vitest-axe';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -72,6 +72,10 @@ describe('App Integration & WCAG Accessibility', () => {
     const gauge = screen.getByRole('img', { name: 'CPCB NAQI gauge, 335 out of 500, Very Poor' });
     expect(gauge).toBeVisible();
     expect(gauge.querySelector('.gauge-stroke')).toHaveAttribute('pathLength', '100');
+    const clipboard = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+    await user.click(screen.getByRole('button', { name: 'Copy Family Alert' }));
+    expect(await screen.findByText('Copied!')).toHaveAttribute('aria-live', 'polite');
+    expect(clipboard).toHaveBeenCalledWith(expect.stringContaining('CPCB NAQI: 335/500 (Very Poor)'));
     const chart = screen.getByRole('group', { name: 'Hourly NAQI chart' });
     const bars = within(chart).getAllByRole('button');
     const readout = screen.getByRole('status', { name: 'Selected forecast hour' });
@@ -124,6 +128,16 @@ describe('App Integration & WCAG Accessibility', () => {
     await user.click(within(impact).getByRole('switch', { name: /Zero-Smoke Home/i }));
     expect(within(impact).getByText('85% less')).toBeVisible();
     expect(within(impact).getByText(/trees\/year/i)).toBeVisible();
+    const community = screen.getByRole('region', { name: 'Community Scale' });
+    const householdSlider = within(community).getByRole('slider', { name: 'Households' });
+    expect(householdSlider).toHaveValue('1');
+    await user.click(within(community).getByRole('button', { name: '25 Flats' }));
+    expect(householdSlider).toHaveValue('25');
+    expect(within(community).getByText('17.875')).toBeVisible();
+    expect(within(community).getByText('851.2')).toBeVisible();
+    fireEvent.change(householdSlider, { target: { value: '200' } });
+    expect(householdSlider).toHaveAttribute('aria-valuetext', '200 households');
+    expect(within(community).getByText('143')).toBeVisible();
     await checkAccessibility();
 
     impactTab!.focus();
@@ -138,5 +152,18 @@ describe('App Integration & WCAG Accessibility', () => {
     await user.keyboard('{ArrowRight}');
     expect(planTab).toHaveFocus();
     expect(screen.getByText(/today’s low-emission schedule/i)).toBeVisible();
+  });
+
+  it('offers a labeled manual copy field when clipboard access is denied', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('Clipboard access denied'));
+    const { container } = render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Copy Family Alert' }));
+    expect(await screen.findByText('Select and copy the alert text below.')).toHaveAttribute('aria-live', 'polite');
+    const field = screen.getByRole('textbox', { name: 'Family alert text' });
+    expect(field).toHaveProperty('readOnly', true);
+    expect((field as HTMLTextAreaElement).value).toContain('VayuShield AI family alert — New Delhi');
+    const results = await axe(container, { rules: { 'color-contrast': { enabled: false } } });
+    expect(results.violations).toEqual([]);
   });
 });

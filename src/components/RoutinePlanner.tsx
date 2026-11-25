@@ -9,6 +9,12 @@ const BUDGETS: Array<{ value: BudgetTier; label: string }> = [
   { value: 'standard', label: 'Standard' }
 ];
 
+export function formatCostTier(value: string): string {
+  const words = value.trim().toLowerCase().split(/[\s_-]+/).filter(Boolean);
+  if (words.join(' ') === 'budget diy') return 'Budget DIY';
+  return words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+}
+
 interface RoutinePlannerProps {
   profile: HouseholdProfile;
   plan: AssistantPlan | null;
@@ -86,12 +92,12 @@ export function RoutinePlanner({ profile, plan, loading, ready, onProfileChange,
               <h4>{step.timeBlock}</h4><p>{step.action}</p><p className="muted">{step.whyItHelps}</p>
             </li>)}
           </ol>
-          <div className="plan-disclosures">
+          <div className="plan-disclosures items-start">
             <details>
               <summary><Lightbulb size={18} aria-hidden="true" /> Indoor air hacks <ChevronDown size={17} aria-hidden="true" className="details-arrow" /></summary>
               <ul>
                 {plan.indoorHacks.map((hack, i) => <li key={hack.title + i}>
-                  <h4>{hack.title}</h4><p>{hack.steps}</p><p className="muted">{hack.costTier} · {hack.impact}</p>
+                  <h4>{hack.title}</h4><p>{hack.steps}</p><p className="muted">{formatCostTier(hack.costTier)} · {hack.impact}</p>
                 </li>)}
               </ul>
             </details>

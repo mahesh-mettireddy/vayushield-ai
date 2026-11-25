@@ -128,7 +128,7 @@ export default function App() {
 
       <main id="main-content" className="page-width main-layout">
         {airError && <p className="notice" role="alert">Live readings couldn’t load. Try refreshing or switching cities.</p>}
-        {air ? <AqiHero air={air} /> : (
+        {air ? <AqiHero air={air} impact={impact} /> : (
           <section className="air-hero hero-placeholder" aria-label="Air quality">
             <h2>{selected.name}</h2>
             {airLoading && <p role="status">Loading air quality and forecast…</p>}
