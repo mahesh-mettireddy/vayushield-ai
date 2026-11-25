@@ -31,6 +31,7 @@ export interface CpcbAqiResult {
 export interface HourlyAirPoint {
   time: string;
   hourLabel: string;
+  endHourLabel?: string;
   pm25: number;
   pm10: number;
   aqi: number;
@@ -49,6 +50,7 @@ export interface CleanAirWindowAnalysis {
     endLabel: string;
     avgPm25: number;
     avgAqi: number;
+    advice: string;
   };
   exposureSavingsPct: number;
 }
@@ -98,6 +100,7 @@ export interface ChoiceToggles {
   cleanCookingExhaust: boolean;
   n95OutdoorMask: boolean;
   publicTransitOrWfhSwap: boolean;
+  zeroSmokeIndoor: boolean;
 }
 
 export interface ImpactBreakdownItem {

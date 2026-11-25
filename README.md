@@ -5,7 +5,7 @@ VayuShield AI is an urban air quality assistant that helps households plan outdo
 ## Features
 
 - **Current air quality.** Search for a city or use your location to view Open-Meteo pollutant readings and India’s CPCB National Air Quality Index (NAQI). An optional OpenAQ integration adds nearby monitoring station details.
-- **24-hour forecast.** Compare the lowest and highest two-hour average PM2.5 levels in the upcoming forecast for your city.
+- **24-hour forecast.** Compare the lowest and highest two-hour average NAQI values in the upcoming forecast for your city.
 - **Choice-Impact Simulator.** Estimate changes in PM2.5 exposure and CO₂ emissions from habits such as indoor filtration and commute swaps.
 - **Routine planner.** Generate a daily plan using local air quality, household preferences, and the simulator’s estimates. Built-in planning works without provider credentials.
 - **Indoor air playbook.** Search practical tips by keyword, with optional in-browser semantic search.
@@ -21,7 +21,7 @@ npm ci
 npm run dev
 ```
 
-Open the URL printed by Vite. In this mode, the app can fetch Open-Meteo data directly and use its built-in routine planner. To test both serverless endpoints locally, use the [Vercel developer server](https://vercel.com/docs/cli/dev).
+Open the URL printed by Vite. In this mode, the app can fetch Open-Meteo data directly and use its built-in routine planner. To test the serverless endpoints locally, use the [Vercel developer server](https://vercel.com/docs/cli/dev).
 
 ## Deploy
 

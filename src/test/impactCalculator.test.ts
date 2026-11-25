@@ -18,16 +18,17 @@ describe('Choice-Impact Simulator Engine', () => {
       smartVentilation: true,
       cleanCookingExhaust: true,
       n95OutdoorMask: true,
-      publicTransitOrWfhSwap: true
+      publicTransitOrWfhSwap: true,
+      zeroSmokeIndoor: true
     };
 
     const result = calculateChoiceImpact(200, BASE_PROFILE, toggles);
     // Commute: (0.192 - 0.028) * 20 * 240 = 787.2 + 85 cooking = 872 kg CO2/yr
     expect(result.annualCo2SavedKg).toBe(872);
-    expect(result.exposureReductionPct).toBeGreaterThan(70);
-    expect(result.exposureReductionPct).toBeLessThanOrEqual(92);
-    expect(result.projectedDailyExposureUgM3).toBeLessThan(result.baselineDailyExposureUgM3);
-    expect(result.breakdown.length).toBe(5);
+    expect(result.exposureReductionPct).toBe(85);
+    expect(result.projectedDailyExposureUgM3).toBe(23.4);
+    expect(result.breakdown).toHaveLength(6);
+    expect(result.breakdown.find((item) => item.label.startsWith('Zero-Smoke'))?.exposureDeltaPct).toBe(15);
   });
 
   it('returns zero reduction when all toggles are off', () => {
@@ -36,7 +37,8 @@ describe('Choice-Impact Simulator Engine', () => {
       smartVentilation: false,
       cleanCookingExhaust: false,
       n95OutdoorMask: false,
-      publicTransitOrWfhSwap: false
+      publicTransitOrWfhSwap: false,
+      zeroSmokeIndoor: false
     };
 
     const result = calculateChoiceImpact(150, BASE_PROFILE, allOff);

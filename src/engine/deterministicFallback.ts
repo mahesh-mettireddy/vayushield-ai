@@ -1,4 +1,6 @@
-import type { AssistantPlan } from '../types/airQuality';
+import type { AssistantPlan, PollutantKey } from '../types/airQuality.js';
+import { POLLUTANT_LABELS } from './cpcbAqi.js';
+import { getPeakWindowAdvice } from './cleanAirWindow.js';
 
 export interface DeterministicPlanInput {
   city: string;
@@ -9,12 +11,13 @@ export interface DeterministicPlanInput {
   pm10: number;
   bestWindowLabel: string;
   worstWindowLabel: string;
+  worstWindowAqi: number;
   householdMembers: string[];
-  commuteMode: string;
+  baselineCommuteLabel: string;
+  chosenCommuteLabel: string;
   budgetTier: 'zero_cost' | 'budget_diy' | 'standard';
   exposureReductionPct: number;
   annualCo2SavedKg: number;
-  userQuestion?: string;
 }
 
 export function buildDeterministicPlan(input: DeterministicPlanInput): AssistantPlan {
@@ -23,26 +26,27 @@ export function buildDeterministicPlan(input: DeterministicPlanInput): Assistant
     ['Children', 'Seniors', 'Asthma / Respiratory'].includes(m)
   );
 
-  const summary = `In ${input.city}, India CPCB NAQI is ${input.aqi} (${input.category}, dominant pollutant: ${input.dominantPollutant.toUpperCase()} at PM2.5 ${input.pm25.toFixed(1)} µg/m³). Your active choices cut daily PM2.5 exposure by ~${input.exposureReductionPct}% and save ~${input.annualCo2SavedKg} kg CO₂/year.${
-    input.userQuestion ? ` Tailored note for "${input.userQuestion.slice(0, 80)}": prioritize indoor filtration and your ${input.bestWindowLabel} clean-air slot.` : ''
-  }`;
+  const dominant = Object.hasOwn(POLLUTANT_LABELS, input.dominantPollutant)
+    ? POLLUTANT_LABELS[input.dominantPollutant as PollutantKey].name
+    : 'Unavailable';
+  const summary = `In ${input.city}, CPCB NAQI is ${input.aqi} (${input.category}). Dominant pollutant: ${dominant}. Current PM2.5: ${input.pm25.toFixed(1)} µg/m³. Your active choices are estimated to reduce daily PM2.5 exposure by ${input.exposureReductionPct}% and save ${input.annualCo2SavedKg} kg CO₂ per year.`;
 
   const dailyRoutine = [
     {
-      timeBlock: `Peak Smog Shield (${input.worstWindowLabel})`,
-      action: isHighSmog
-        ? 'Keep balcony doors and windows sealed, move workouts indoors, and wear a snug N95 if stepping out.'
-        : 'Close road-facing windows during rush-hour traffic peaks and run kitchen exhaust while cooking.',
-      whyItHelps: `Avoids the highest 2-hour particulate spike in ${input.city}, protecting ${
-        hasSensitiveMembers ? 'children, seniors, and sensitive lungs' : 'your household'
-      }.`
+      timeBlock: `Peak window · ${input.worstWindowLabel}`,
+      action: input.worstWindowLabel === 'Unavailable'
+        ? 'Check the next available forecast before planning outdoor activities.'
+        : getPeakWindowAdvice(input.worstWindowAqi),
+      whyItHelps: hasSensitiveMembers
+        ? 'Use the peak NAQI to plan around the needs of sensitive household members.'
+        : 'Use the peak NAQI to decide when to adjust outdoor plans.'
     },
     {
       timeBlock: `Clean-Air Window (${input.bestWindowLabel})`,
       action: isHighSmog
         ? 'Batch essential errands into this trough window and keep cross-ventilation brief (5–10 mins max).'
         : 'Open opposite windows for 15–20 minutes to flush indoor CO₂ and schedule outdoor walks or school pickups.',
-      whyItHelps: 'Matches your household schedule to the lowest forecasted PM2.5 concentration in the next 24 hours.'
+      whyItHelps: 'Matches your household schedule to the lowest two-hour forecast NAQI.'
     },
     {
       timeBlock: 'Evening & Night Recovery (8 PM – 6 AM)',
@@ -93,8 +97,10 @@ export function buildDeterministicPlan(input: DeterministicPlanInput): Assistant
 
   const sustainableSwaps = [
     {
-      swap: `Shift ${input.commuteMode.replace('_', ' ')} trips toward Metro, bus, carpool, or batched errands`,
-      directImpact: `Saves ~${input.annualCo2SavedKg} kg CO₂/year and cuts local tailpipe NO₂ and PM2.5 emissions in your neighborhood.`
+      swap: input.baselineCommuteLabel === input.chosenCommuteLabel
+        ? `Keep using ${input.chosenCommuteLabel}`
+        : `Compare ${input.baselineCommuteLabel} with ${input.chosenCommuteLabel}`,
+      directImpact: 'Use the Impact Lab to compare the emissions and exposure estimates for the two commutes.'
     },
     {
       swap: 'Switch dry sweeping and leaf burning to damp mopping and community composting',

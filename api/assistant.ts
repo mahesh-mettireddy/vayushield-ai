@@ -1,6 +1,6 @@
-import type { VercelRequest, VercelResponse } from './_lib/httpTypes';
-import { generatePlanWithFailover } from './_lib/providers';
-import { AssistantRequestSchema, checkRateLimit } from './_lib/schemas';
+import type { VercelRequest, VercelResponse } from './_lib/httpTypes.js';
+import { generatePlanWithFailover } from './_lib/providers.js';
+import { AssistantRequestSchema, checkRateLimit } from './_lib/schemas.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -22,7 +22,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     return;
   }
 
-  const parsed = AssistantRequestSchema.safeParse(req.body);
+  let body: unknown = req.body;
+  if (typeof body === 'string') {
+    try {
+      body = JSON.parse(body);
+    } catch {
+      res.status(400).json({ error: 'Request body must contain valid JSON.' });
+      return;
+    }
+  }
+
+  const parsed = AssistantRequestSchema.safeParse(body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid assistant request payload.', details: parsed.error.flatten() });
     return;

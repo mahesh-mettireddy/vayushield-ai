@@ -34,9 +34,12 @@ export const AssistantRequestSchema = z.object({
   pm10: z.number().min(0).max(4000),
   bestWindowLabel: z.string().trim().min(1).max(40),
   worstWindowLabel: z.string().trim().min(1).max(40),
+  worstWindowAqi: z.number().min(0).max(500).optional(),
   profile: z.object({
     householdMembers: z.array(z.string().trim().max(40)).max(6),
     commuteMode: z.string().trim().min(1).max(30),
+    baselineCommuteLabel: z.string().trim().min(1).max(50).optional(),
+    chosenCommuteLabel: z.string().trim().min(1).max(50).optional(),
     commuteKm: z.number().min(0).max(200),
     homeType: z.enum(['apartment', 'independent_house', 'shared_flat']),
     budgetTier: z.enum(['zero_cost', 'budget_diy', 'standard'])

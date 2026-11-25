@@ -1,6 +1,7 @@
 import { analyzeCleanAirWindows } from '../engine/cleanAirWindow';
 import { readOpenMeteoForecast, type OpenMeteoAirData } from '../engine/openMeteoForecast';
 import { buildDeterministicPlan } from '../engine/deterministicFallback';
+import { COMMUTE_LABELS } from '../engine/impactCalculator';
 import type {
   AirQualityPayload,
   AssistantPlan,
@@ -92,8 +93,15 @@ export async function requestAssistantPlan(params: {
   userQuestion: string;
 }): Promise<AssistantPlan> {
   const { air, profile, impact, activeChoices, userQuestion } = params;
-  const bestWindowLabel = `${air.windowAnalysis.bestWindow.startLabel} – ${air.windowAnalysis.bestWindow.endLabel}`;
-  const worstWindowLabel = `${air.windowAnalysis.worstWindow.startLabel} – ${air.windowAnalysis.worstWindow.endLabel}`;
+  const labelFor = ({ startLabel, endLabel }: { startLabel: string; endLabel: string }) =>
+    startLabel === 'Unavailable' ? startLabel : `${startLabel} – ${endLabel}`;
+  const bestWindowLabel = labelFor(air.windowAnalysis.bestWindow);
+  const worstWindowLabel = labelFor(air.windowAnalysis.worstWindow);
+  const worstWindowAqi = air.windowAnalysis.worstWindow.avgAqi;
+  const commuteLabels = {
+    baselineCommuteLabel: COMMUTE_LABELS[profile.baselineCommute],
+    chosenCommuteLabel: COMMUTE_LABELS[profile.chosenCommute]
+  };
 
   try {
     const res = await fetch('/api/assistant', {
@@ -108,9 +116,11 @@ export async function requestAssistantPlan(params: {
         pm10: air.current.pm10,
         bestWindowLabel,
         worstWindowLabel,
+        worstWindowAqi,
         profile: {
           householdMembers: profile.householdMembers,
           commuteMode: profile.chosenCommute,
+          ...commuteLabels,
           commuteKm: profile.commuteKm,
           homeType: profile.homeType,
           budgetTier: profile.budgetTier
@@ -140,11 +150,11 @@ export async function requestAssistantPlan(params: {
     pm10: air.current.pm10,
     bestWindowLabel,
     worstWindowLabel,
+    worstWindowAqi,
     householdMembers: profile.householdMembers,
-    commuteMode: profile.chosenCommute,
+    ...commuteLabels,
     budgetTier: profile.budgetTier,
     exposureReductionPct: impact.exposureReductionPct,
-    annualCo2SavedKg: impact.annualCo2SavedKg,
-    userQuestion: userQuestion.trim() || undefined
+    annualCo2SavedKg: impact.annualCo2SavedKg
   });
 }

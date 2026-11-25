@@ -1,10 +1,12 @@
-import type { AssistantPlan } from '../../src/types/airQuality';
-import { buildDeterministicPlan } from '../../src/engine/deterministicFallback';
+import { z } from 'zod';
+import type { AssistantPlan, CommuteMode } from '../../src/types/airQuality.js';
+import { COMMUTE_LABELS } from '../../src/engine/impactCalculator.js';
+import { buildDeterministicPlan } from '../../src/engine/deterministicFallback.js';
 import {
   AssistantPlanOutputSchema,
   sanitizeUserText,
   type AssistantRequest
-} from './schemas';
+} from './schemas.js';
 
 export interface ProviderEnv {
   GEMINI_API_KEY?: string;
@@ -13,9 +15,42 @@ export interface ProviderEnv {
   GROQ_API_KEY?: string;
 }
 
+const geminiEnvelope = z.object({
+  candidates: z.array(z.object({ content: z.object({ parts: z.array(z.object({ text: z.string().optional() })) }) })).min(1)
+});
+const chatEnvelope = z.object({
+  choices: z.array(z.object({ message: z.object({ content: z.string() }) })).min(1)
+});
+
+class ProviderFailure extends Error {}
+
+function logProviderFailure(provider: string, error: unknown): void {
+  const reason = error instanceof ProviderFailure ? error.message
+    : error instanceof z.ZodError ? 'unexpected response shape'
+      : error instanceof SyntaxError ? 'invalid JSON'
+        : error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name) ? 'request timed out'
+          : 'request failed';
+  console.error(`[assistant] ${provider}: ${reason}`);
+}
+
+function commuteLabels(profile: AssistantRequest['profile']) {
+  const legacyLabel = Object.hasOwn(COMMUTE_LABELS, profile.commuteMode)
+    ? COMMUTE_LABELS[profile.commuteMode as CommuteMode] : 'your selected commute';
+  const cleanLabel = (label: string | undefined, fallback: string) => {
+    if (!label) return fallback;
+    if (Object.hasOwn(COMMUTE_LABELS, label)) return COMMUTE_LABELS[label as CommuteMode];
+    return sanitizeUserText(label, 50) || fallback;
+  };
+  return {
+    baselineCommuteLabel: cleanLabel(profile.baselineCommuteLabel, 'your usual commute'),
+    chosenCommuteLabel: cleanLabel(profile.chosenCommuteLabel, legacyLabel)
+  };
+}
+
 function buildPrompts(req: AssistantRequest): { system: string; user: string } {
   const safeCity = sanitizeUserText(req.city, 80);
   const safeQuestion = req.userQuestion ? sanitizeUserText(req.userQuestion, 240) : '';
+  const { householdMembers, commuteKm, homeType, budgetTier } = req.profile;
 
   const system = [
     'You are VayuShield AI, a grounded urban air quality advisor helping families navigate severe smog and urban air pollution.',
@@ -23,7 +58,8 @@ function buildPrompts(req: AssistantRequest): { system: string; user: string } {
     '1. Base every number ONLY on the telemetry and deterministic impact metrics provided in the user JSON. Never invent AQI values or unverified statistics.',
     '2. Return ONLY valid JSON matching the exact schema: {"summary":string,"dailyRoutine":[{"timeBlock":string,"action":string,"whyItHelps":string}],"indoorHacks":[{"title":string,"steps":string,"costTier":string,"impact":string}],"sustainableSwaps":[{"swap":string,"directImpact":string}],"safetyNote":string}.',
     '3. Keep recommendations practical, respectful of the household budgetTier, and clear about the direct impact of each choice.',
-    '4. Include a brief non-medical informational disclaimer in safetyNote.'
+    '4. Include a brief non-medical informational disclaimer in safetyNote.',
+    '5. Use the supplied commute labels in swaps, and keep the dominant pollutant separate from the PM2.5 reading.'
   ].join('\n');
 
   const user = JSON.stringify({
@@ -35,9 +71,10 @@ function buildPrompts(req: AssistantRequest): { system: string; user: string } {
       pm25UgM3: req.pm25,
       pm10UgM3: req.pm10,
       cleanest2HourWindow: req.bestWindowLabel,
-      worst2HourWindow: req.worstWindowLabel
+      worst2HourWindow: req.worstWindowLabel,
+      worst2HourAverageNaqi: req.worstWindowAqi
     },
-    household: req.profile,
+    household: { householdMembers, commuteKm, homeType, budgetTier, ...commuteLabels(req.profile) },
     activeChoices: req.activeChoices,
     computedChoiceImpact: req.impactSummary,
     specificQuestion: safeQuestion || 'Create today’s low-emission routine, indoor air hacks, and sustainable swaps.'
@@ -53,7 +90,7 @@ function extractJsonObject(rawText: string): unknown {
   const firstBrace = candidate.indexOf('{');
   const lastBrace = candidate.lastIndexOf('}');
   if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
-    throw new Error('Model response did not contain a JSON object');
+    throw new ProviderFailure('plan did not contain a JSON object');
   }
   return JSON.parse(candidate.slice(firstBrace, lastBrace + 1));
 }
@@ -64,10 +101,10 @@ async function callGemini(
   user: string,
   fetchImpl: typeof fetch
 ): Promise<AssistantPlan> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
   const res = await fetchImpl(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
       contents: [{ role: 'user', parts: [{ text: user }] }],
@@ -80,14 +117,12 @@ async function callGemini(
   });
 
   if (!res.ok) {
-    throw new Error(`Gemini HTTP ${res.status}`);
+    throw new ProviderFailure(`HTTP ${res.status}`);
   }
 
-  const data = (await res.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-  };
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Gemini returned empty text');
+  const data = geminiEnvelope.parse(await res.json());
+  const text = data.candidates[0]?.content.parts.map((part) => part.text ?? '').join('').trim();
+  if (!text) throw new ProviderFailure('empty response text');
 
   const parsed = AssistantPlanOutputSchema.parse(extractJsonObject(text));
   return {
@@ -125,14 +160,12 @@ async function callOpenAiCompatible(
   });
 
   if (!res.ok) {
-    throw new Error(`${provider} HTTP ${res.status}`);
+    throw new ProviderFailure(`HTTP ${res.status}`);
   }
 
-  const data = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) throw new Error(`${provider} returned empty content`);
+  const data = chatEnvelope.parse(await res.json());
+  const content = data.choices[0]?.message.content.trim();
+  if (!content) throw new ProviderFailure('empty response text');
 
   const parsed = AssistantPlanOutputSchema.parse(extractJsonObject(content));
   return {
@@ -159,8 +192,8 @@ export async function generatePlanWithFailover(
   if (env.GEMINI_API_KEY?.trim()) {
     try {
       return await callGemini(env.GEMINI_API_KEY.trim(), system, user, fetchImpl);
-    } catch {
-      // Fall through cleanly to Tier 2 (Hugging Face Router)
+    } catch (error) {
+      logProviderFailure('Gemini', error);
     }
   }
 
@@ -177,8 +210,8 @@ export async function generatePlanWithFailover(
         user,
         fetchImpl
       );
-    } catch {
-      // Fall through cleanly to Tier 3 (Groq)
+    } catch (error) {
+      logProviderFailure('Hugging Face Router', error);
     }
   }
 
@@ -194,8 +227,8 @@ export async function generatePlanWithFailover(
         user,
         fetchImpl
       );
-    } catch {
-      // Fall through cleanly to Tier 4 (Deterministic Fallback)
+    } catch (error) {
+      logProviderFailure('Groq', error);
     }
   }
 
@@ -208,11 +241,11 @@ export async function generatePlanWithFailover(
     pm10: req.pm10,
     bestWindowLabel: req.bestWindowLabel,
     worstWindowLabel: req.worstWindowLabel,
+    worstWindowAqi: req.worstWindowAqi ?? req.aqi,
     householdMembers: req.profile.householdMembers,
-    commuteMode: req.profile.commuteMode,
+    ...commuteLabels(req.profile),
     budgetTier: req.profile.budgetTier,
     exposureReductionPct: req.impactSummary.exposureReductionPct,
-    annualCo2SavedKg: req.impactSummary.annualCo2SavedKg,
-    userQuestion: req.userQuestion ? sanitizeUserText(req.userQuestion, 240) : undefined
+    annualCo2SavedKg: req.impactSummary.annualCo2SavedKg
   });
 }

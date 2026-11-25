@@ -4,7 +4,7 @@ import type {
   CommuteMode,
   HouseholdProfile,
   ImpactBreakdownItem
-} from '../types/airQuality';
+} from '../types/airQuality.js';
 
 /** Emission factors in kg CO₂ per passenger-kilometer (standard urban transport benchmarks). */
 export const COMMUTE_EMISSION_KG_PER_KM: Record<CommuteMode, number> = {
@@ -78,6 +78,16 @@ export function calculateChoiceImpact(
       label: 'Well-Fitted N95 During Peak Outdoor Trips',
       detail: 'Blocks ≥80% of inhaled PM2.5 while commuting or running errands (~20% daily weighted exposure drop).',
       exposureDeltaPct: 20,
+      co2SavedKgPerYear: 0
+    });
+  }
+
+  if (toggles.zeroSmokeIndoor) {
+    residualFactor *= 0.85;
+    breakdown.push({
+      label: 'Zero-Smoke Home — No Incense / Coils',
+      detail: 'Removing incense and mosquito coil smoke is modeled as a 15% reduction in indoor PM2.5.',
+      exposureDeltaPct: 15,
       co2SavedKgPerYear: 0
     });
   }

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'vitest-axe';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -37,7 +37,8 @@ const MOCK_AIR_PAYLOAD: AirQualityPayload = {
       startLabel: '2 PM',
       endLabel: '4 PM',
       avgPm25: 137.5,
-      avgAqi: 269
+      avgAqi: 269,
+      advice: 'Keep windows closed during the peak and wear a well-fitted N95 if heading outside.'
     },
     exposureSavingsPct: 35
   },
@@ -47,6 +48,8 @@ const MOCK_AIR_PAYLOAD: AirQualityPayload = {
 describe('App Integration & WCAG Accessibility', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    // jsdom has no canvas. The browser smoke check runs axe against real canvas and CSS.
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
       if (url.includes('/api/air-quality')) {
@@ -67,15 +70,47 @@ describe('App Integration & WCAG Accessibility', () => {
       expect(screen.getByText('335')).toBeInTheDocument();
     });
 
-    const generateBtn = screen.getByRole('button', { name: /generate ai routine/i });
+    const tablist = screen.getByRole('tablist', { name: 'Air quality tools' });
+    const tabs = within(tablist).getAllByRole('tab');
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['AI Daily Plan', 'Impact Lab', 'Playbook & Local HF']);
+    const [planTab, impactTab, playbookTab] = tabs;
+    expect(planTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel', { name: 'AI Daily Plan' })).toBeVisible();
+    expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
+
+    const generateBtn = screen.getByRole('button', { name: /generate plan/i });
     await user.click(generateBtn);
 
     await waitFor(() => {
-      expect(screen.getByText(/today's low-emission schedule/i)).toBeInTheDocument();
+      expect(screen.getByText(/today’s low-emission schedule/i)).toBeInTheDocument();
     });
 
     // Color contrast requires a browser that renders CSS and supports canvas.
-    const a11yResults = await axe(container, { rules: { 'color-contrast': { enabled: false } } });
-    expect(a11yResults.violations).toEqual([]);
+    const checkAccessibility = async () => {
+      const results = await axe(container, { rules: { 'color-contrast': { enabled: false } } });
+      expect(results.violations).toEqual([]);
+    };
+    await checkAccessibility();
+    planTab!.focus();
+    await user.keyboard('{ArrowRight}');
+    expect(impactTab).toHaveFocus();
+    expect(impactTab).toHaveAttribute('aria-selected', 'true');
+    const impact = screen.getByRole('tabpanel', { name: 'Impact Lab' });
+    expect(within(impact).getAllByRole('switch')).toHaveLength(6);
+    await user.click(within(impact).getByRole('switch', { name: /Zero-Smoke Home/i }));
+    expect(within(impact).getByText('85% less')).toBeVisible();
+    await checkAccessibility();
+
+    impactTab!.focus();
+    await user.keyboard('{End}');
+    expect(playbookTab).toHaveFocus();
+    await user.type(screen.getByRole('searchbox', { name: 'Search the playbook' }), 'quasar');
+    expect(screen.getByRole('status')).toHaveTextContent('No exact keyword matches');
+    expect(screen.getByRole('button', { name: 'Local HF Semantic Match (WASM)' })).toBeEnabled();
+    await checkAccessibility();
+    playbookTab!.focus();
+    await user.keyboard('{ArrowRight}');
+    expect(planTab).toHaveFocus();
+    expect(screen.getByText(/today’s low-emission schedule/i)).toBeVisible();
   });
 });

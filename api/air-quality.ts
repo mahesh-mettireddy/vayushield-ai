@@ -1,12 +1,12 @@
-import type { VercelRequest, VercelResponse } from './_lib/httpTypes';
-import { analyzeCleanAirWindows } from '../src/engine/cleanAirWindow';
-import { readOpenMeteoForecast, type OpenMeteoAirData } from '../src/engine/openMeteoForecast';
+import type { VercelRequest, VercelResponse } from './_lib/httpTypes.js';
+import { analyzeCleanAirWindows } from '../src/engine/cleanAirWindow.js';
+import { readOpenMeteoForecast, type OpenMeteoAirData } from '../src/engine/openMeteoForecast.js';
 import type {
   AirQualityPayload,
   GroundStationOverlay,
   LocationOption
-} from '../src/types/airQuality';
-import { AirQualityQuerySchema, sanitizeUserText } from './_lib/schemas';
+} from '../src/types/airQuality.js';
+import { AirQualityQuerySchema, sanitizeUserText } from './_lib/schemas.js';
 
 interface CacheEntry {
   expiresAt: number;

@@ -1,5 +1,5 @@
-import type { HourlyAirPoint, PollutantReadings } from '../types/airQuality';
-import { calculateCpcbAqi } from './cpcbAqi';
+import type { HourlyAirPoint, PollutantReadings } from '../types/airQuality.js';
+import { calculateCpcbAqi } from './cpcbAqi.js';
 
 interface OpenMeteoPollutants<T> {
   pm2_5?: T;
@@ -49,6 +49,7 @@ export function readOpenMeteoForecast(data: OpenMeteoAirData, now = Date.now()) 
       hourly.push({
         time: new Date(timestamp).toISOString(),
         hourLabel: hourLabel.format(timestamp),
+        endHourLabel: hourLabel.format(timestamp + 3_600_000),
         pm25: Math.round(readings.pm25 * 10) / 10,
         pm10: Math.round(readings.pm10 * 10) / 10,
         aqi: calculateCpcbAqi(readings).aqi

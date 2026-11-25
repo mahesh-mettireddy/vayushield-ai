@@ -1,4 +1,4 @@
-import type { AqiCategory, CpcbAqiResult, PollutantKey, PollutantReadings } from '../types/airQuality';
+import type { AqiCategory, CpcbAqiResult, PollutantKey, PollutantReadings } from '../types/airQuality.js';
 
 interface BreakpointBand {
   bpLo: number;

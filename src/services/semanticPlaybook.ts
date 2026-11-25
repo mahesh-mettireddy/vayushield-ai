@@ -15,21 +15,23 @@ function tokenize(text: string): string[] {
 }
 
 export function rankPlaybookByKeywords(query: string, tips: PlaybookTip[]): RankedPlaybookTip[] {
-  const tokens = tokenize(query);
-  if (tokens.length === 0) {
+  if (!query.trim()) {
     return tips.map((tip) => ({ tip, score: 1, mode: 'keyword' }));
   }
+  const tokens = [...new Set(tokenize(query))];
+  if (tokens.length === 0) return [];
 
   return tips
     .map((tip) => {
-      const haystack = `${tip.title} ${tip.summary} ${tip.steps} ${tip.keywords.join(' ')}`.toLowerCase();
+      const haystack = new Set(tokenize(`${tip.title} ${tip.summary} ${tip.steps} ${tip.keywords.join(' ')}`));
       let matches = 0;
       for (const token of tokens) {
-        if (haystack.includes(token)) matches += 1;
+        if (haystack.has(token)) matches += 1;
       }
       const score = matches / tokens.length;
       return { tip, score, mode: 'keyword' as const };
     })
+    .filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score);
 }
 

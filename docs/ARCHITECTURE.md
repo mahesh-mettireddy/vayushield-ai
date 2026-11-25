@@ -10,7 +10,7 @@ VayuShield AI uses React, Vite, TypeScript, and Tailwind CSS for the frontend. V
 Browser (React 19 + Vite + TypeScript + Tailwind CSS)
   ├── LocationSearch (Open-Meteo Geocoding via /api/air-quality?q=... or city presets)
   ├── AqiHero & PollutantGrid (CPCB NAQI Engine -> 0-500 score, 6 bands, dominant pollutant)
-  ├── CleanAirWindowChart (24-hour PM2.5 forecast -> lowest-average two-hour window)
+  ├── CleanAirWindowChart (24-hour NAQI forecast -> lowest and highest two-hour averages)
   ├── ChoiceImpactSimulator (Deterministic PM2.5 exposure & CO2 savings calculator)
   ├── RoutinePlanner (Calls POST /api/assistant -> structured JSON routine + hacks + impact)
   └── IndoorPlaybookSearch (Keyword + optional lazy-loaded @huggingface/transformers WASM embeddings)
@@ -21,6 +21,7 @@ Vercel Serverless Functions (/api/*)
   │     ├── Open-Meteo Air Quality API (hourly PM2.5, PM10, NO2, SO2, O3, CO; timezone=auto)
   │     ├── Optional OpenAQ v3 overlay (if OPENAQ_API_KEY env var is present)
   │     └── Cache expires after 15 minutes or when the first forecast hour begins
+  ├── GET  /api/health (service status and provider configuration flags)
   └── POST /api/assistant
         ├── Zod request validation + prompt-injection sanitization + IP rate limiter
         ├── Failover Chain (strict descending capability):
@@ -60,11 +61,11 @@ Overall NAQI = $\max(I_p)$ across available pollutants, clamped to `[0, 500]`, r
 
 ### 2.2 24-Hour Clean-Air Window Finder (`src/engine/cleanAirWindow.ts`)
 - Inputs: the next 24 hourly forecast entries (`{ time, pm25, pm10, aqi }`) strictly after the current instant, displayed in the city’s timezone (`timezone=auto`).
-- Computes rolling 2-hour average PM2.5 across all consecutive pairs `(i, i+1)`.
+- Ranks consecutive pairs by average overall NAQI, breaking ties by average PM2.5.
 - Outputs:
-  - `bestWindow`: lowest average PM2.5 2-hour slot (start/end formatted in 12h local time + average PM2.5 + ventilation advice).
-  - `worstWindow`: highest average PM2.5 2-hour slot (peak smog avoidance warning).
-  - `exposureSavingsPct`: percentage reduction in PM2.5 by shifting a 1-hour outdoor activity from `worstWindow` to `bestWindow`.
+  - `bestWindow`: lowest-ranked two-hour slot with local time, average NAQI and PM2.5, and activity guidance.
+  - `worstWindow`: highest-ranked two-hour slot with advice based on its average NAQI.
+  - `exposureSavingsPct`: estimated PM2.5 reduction when shifting an activity from peak to cleanest. It is zero when the cleanest NAQI window has equal or greater PM2.5.
 
 ### 2.3 Choice-Impact Simulator (`src/engine/impactCalculator.ts`)
 Pure deterministic model translating household choices into verifiable daily/annual impact:
@@ -77,6 +78,7 @@ Pure deterministic model translating household choices into verifiable daily/ann
   - `smartVentilation`: timing cross-ventilation to `bestWindow` reduces indoor spike by `20%` (remaining factor `0.80`).
   - `cleanCookingExhaust`: using chimney/exhaust + lid/induction reduces indoor cooking PM2.5 by `35%` (remaining factor `0.65`).
   - `n95OutdoorMask`: reduces outdoor inhaled PM2.5 by `80%` during outdoor hours (weighted `0.25` of day → overall daily reduction factor `0.80`).
+  - `zeroSmokeIndoor`: models a `15%` reduction in indoor PM2.5 from avoiding incense and smoke-producing mosquito coils.
   - Outputs: `baselineDailyExposureUgM3`, `projectedDailyExposureUgM3`, `exposureReductionPct`, `dailyCo2SavedKg`, `annualCo2SavedKg`, and human-readable impact rationale per toggle.
 
 ---
@@ -93,8 +95,8 @@ Pure deterministic model translating household choices into verifiable daily/ann
 - Request body validated via Zod (`AssistantRequestSchema`):
   - `city`: string (1–80 chars)
   - `aqi`: number (`0..500`), `category`: string, `dominantPollutant`: string, `pm25`: number, `pm10`: number
-  - `bestWindowLabel`: string, `worstWindowLabel`: string
-  - `profile`: `{ householdMembers: string[], commuteMode: string, commuteKm: number, homeType: string, budgetTier: 'zero_cost' | 'budget_diy' | 'standard' }`
+  - `bestWindowLabel`: string, `worstWindowLabel`: string, `worstWindowAqi`: optional number
+  - `profile` contains household members, commute mode and distance, optional display labels for the usual and alternative commutes, home type, and budget tier.
   - `activeChoices`: string[] (max 10)
   - `impactSummary`: `{ exposureReductionPct: number, annualCo2SavedKg: number }`
   - `userQuestion`: optional string (max 300 chars, stripped of control chars & prompt-injection delimiters)
@@ -118,6 +120,10 @@ Pure deterministic model translating household choices into verifiable daily/ann
   ```
 
 ---
+
+### 3.3 `GET /api/health`
+
+Returns `ok` and Boolean flags for Gemini, Hugging Face, Groq, and OpenAQ configuration. The response is uncached and includes only flags. Provider connectivity is checked when the corresponding feature runs.
 
 ## 4. Accessibility & Security Controls
 - **WCAG 2.1 AA**:
