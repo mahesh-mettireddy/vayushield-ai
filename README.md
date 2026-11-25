@@ -4,8 +4,8 @@ VayuShield AI is an urban air quality assistant that helps households plan outdo
 
 ## Features
 
-- **Current air quality.** Search for a city or use your location to view Open-Meteo pollutant readings and India’s CPCB National Air Quality Index (NAQI). An optional OpenAQ integration adds nearby monitoring station details.
-- **24-hour forecast.** Compare the lowest and highest two-hour average NAQI values in the upcoming forecast for your city.
+- **Current air quality.** Search for a city or use your location to view India’s CPCB National Air Quality Index (NAQI) and Open-Meteo readings. An optional OpenAQ integration adds nearby monitoring station details.
+- **Interactive 24-hour forecast.** Inspect hourly NAQI, PM2.5, and PM10 in the chart, or compare the lowest and highest two-hour NAQI windows.
 - **Choice-Impact Simulator.** Estimate changes in PM2.5 exposure and CO₂ emissions from habits such as indoor filtration and commute swaps.
 - **Routine planner.** Generate a daily plan using local air quality, household preferences, and the simulator’s estimates. Built-in planning works without provider credentials.
 - **Indoor air playbook.** Search practical tips by keyword, with optional in-browser semantic search.

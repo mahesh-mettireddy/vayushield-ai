@@ -106,11 +106,14 @@ Pure deterministic model translating household choices into verifiable daily/ann
   2. **Hugging Face Inference Providers**: `https://router.huggingface.co/v1/chat/completions` (`model: process.env.HF_MODEL || 'Qwen/Qwen2.5-72B-Instruct'`).
   3. **Groq**: `https://api.groq.com/openai/v1/chat/completions` (`model: 'llama-3.3-70b-versatile'`).
   4. **Deterministic Fallback**: Local TypeScript routine generator grounded in exact CPCB band + household profile + choice simulator numbers.
+- Compatibility retries stay within each provider. Gemini tries 2.0 Flash after a 400 or 404, then Flash-Lite if the legacy model is also unavailable. Hugging Face tries Llama 3.3 after a 404 or 422. Groq tries GPT-OSS 120B after an unsupported legacy request.
+- The assistant normalizes supported snake_case aliases before validating provider output. Built-in responses may include `debugReason` with provider HTTP statuses and schema error names.
 - The response contains a validated plan, the provider that generated it, and its display label.
   ```ts
   {
     provider: 'gemini' | 'huggingface' | 'groq' | 'deterministic-fallback',
     modelLabel: string,
+    debugReason?: string,
     summary: string,
     dailyRoutine: Array<{ timeBlock: string; action: string; whyItHelps: string }>,
     indoorHacks: Array<{ title: string; steps: string; costTier: string; impact: string }>,

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { BookOpen, RefreshCw, ShieldCheck, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { BookOpen, RefreshCw, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { AqiHero } from './components/AqiHero';
 import { ChoiceImpactSimulator } from './components/ChoiceImpactSimulator';
 import { LocationBar } from './components/LocationBar';
@@ -107,7 +107,13 @@ export default function App() {
       <header className="app-header">
         <div className="page-width header-inner">
           <div className="brand">
-            <span className="brand-mark"><ShieldCheck size={23} aria-hidden="true" /></span>
+            <span className="brand-mark">
+              <svg viewBox="0 0 32 32" width="27" height="27" fill="none" stroke="currentColor"
+                strokeWidth="1.55" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M16 3.4c3.2 2.1 6.6 3.3 10 3.8v8.2c0 6.1-4.7 10.7-10 13.2-5.3-2.5-10-7.1-10-13.2V7.2c3.4-.5 6.8-1.7 10-3.8Z" />
+                <path d="M9.5 13.1h9a1.7 1.7 0 1 0-1.7-1.7M8.8 16.5h13M10 20h7a1.6 1.6 0 1 1-1.6 1.6" />
+              </svg>
+            </span>
             <div><h1>VayuShield AI</h1><p>Urban air quality assistant</p></div>
           </div>
           <div className="header-controls">
@@ -130,7 +136,9 @@ export default function App() {
         )}
 
         <section className="workspace" aria-label="Air quality workspace">
-          <div className="workspace-tabs" role="tablist" aria-label="Air quality tools">
+          <div className="workspace-tabs" role="tablist" aria-label="Air quality tools"
+            style={{ '--active-tab': tabIndex } as CSSProperties}>
+            <span className="tab-indicator" aria-hidden="true" />
             {TABS.map(({ id, label, icon: Icon }, index) => (
               <button type="button" id={'tab-' + id} key={id} role="tab"
                 ref={(button) => { tabButtons.current[index] = button; }}

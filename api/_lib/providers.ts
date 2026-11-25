@@ -16,13 +16,24 @@ export interface ProviderEnv {
 }
 
 const geminiEnvelope = z.object({
-  candidates: z.array(z.object({ content: z.object({ parts: z.array(z.object({ text: z.string().optional() })) }) })).min(1)
+  candidates: z.array(z.object({
+    content: z.object({ parts: z.array(z.object({ text: z.string().optional(), thought: z.boolean().optional() })) })
+  })).min(1)
 });
 const chatEnvelope = z.object({
   choices: z.array(z.object({ message: z.object({ content: z.string() }) })).min(1)
 });
 
-class ProviderFailure extends Error {}
+class ProviderFailure extends Error {
+  constructor(message: string, readonly status?: number) {
+    super(message);
+  }
+}
+
+interface ProviderModel {
+  id: string;
+  label: string;
+}
 
 function logProviderFailure(provider: string, error: unknown): void {
   const reason = error instanceof ProviderFailure ? error.message
@@ -31,6 +42,28 @@ function logProviderFailure(provider: string, error: unknown): void {
         : error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name) ? 'request timed out'
           : 'request failed';
   console.error(`[assistant] ${provider}: ${reason}`);
+}
+
+async function tryModels(
+  provider: string,
+  models: ProviderModel[],
+  retryStatuses: number[],
+  call: (model: ProviderModel) => Promise<AssistantPlan>,
+  diagnostics: string[],
+  deadline: AbortSignal
+): Promise<AssistantPlan | undefined> {
+  for (const model of models) {
+    if (deadline.aborted) break;
+    try {
+      return await call(model);
+    } catch (error) {
+      logProviderFailure(provider, error);
+      const status = error instanceof ProviderFailure ? error.status : undefined;
+      if (status !== undefined) diagnostics.push(`${provider} HTTP ${status}`);
+      else if (error instanceof z.ZodError) diagnostics.push(`${provider} ZodError`);
+      if (status === undefined || !retryStatuses.includes(status)) break;
+    }
+  }
 }
 
 function commuteLabels(profile: AssistantRequest['profile']) {
@@ -56,7 +89,7 @@ function buildPrompts(req: AssistantRequest): { system: string; user: string } {
     'You are VayuShield AI, a grounded urban air quality advisor helping families navigate severe smog and urban air pollution.',
     'STRICT RULES:',
     '1. Base every number ONLY on the telemetry and deterministic impact metrics provided in the user JSON. Never invent AQI values or unverified statistics.',
-    '2. Return ONLY valid JSON matching the exact schema: {"summary":string,"dailyRoutine":[{"timeBlock":string,"action":string,"whyItHelps":string}],"indoorHacks":[{"title":string,"steps":string,"costTier":string,"impact":string}],"sustainableSwaps":[{"swap":string,"directImpact":string}],"safetyNote":string}.',
+    '2. Return a JSON object with this schema: {"summary":string,"dailyRoutine":[{"timeBlock":string,"action":string,"whyItHelps":string}],"indoorHacks":[{"title":string,"steps":string,"costTier":string,"impact":string}],"sustainableSwaps":[{"swap":string,"directImpact":string}],"safetyNote":string}. Use 1–3 items per list and concise text.',
     '3. Keep recommendations practical, respectful of the household budgetTier, and clear about the direct impact of each choice.',
     '4. Include a brief non-medical informational disclaimer in safetyNote.',
     '5. Use the supplied commute labels in swaps, and keep the dominant pollutant separate from the PM2.5 reading.'
@@ -97,11 +130,13 @@ function extractJsonObject(rawText: string): unknown {
 
 async function callGemini(
   apiKey: string,
+  model: ProviderModel,
   system: string,
   user: string,
-  fetchImpl: typeof fetch
+  fetchImpl: typeof fetch,
+  deadline: AbortSignal
 ): Promise<AssistantPlan> {
-  const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model.id}:generateContent`;
   const res = await fetchImpl(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
@@ -110,24 +145,26 @@ async function callGemini(
       contents: [{ role: 'user', parts: [{ text: user }] }],
       generationConfig: {
         temperature: 0.3,
-        responseMimeType: 'application/json'
+        responseMimeType: 'application/json',
+        ...(model.id === 'gemini-2.0-flash' ? {} : { thinkingConfig: { thinkingBudget: 0 } })
       }
     }),
-    signal: AbortSignal.timeout(12000)
+    signal: AbortSignal.any([deadline, AbortSignal.timeout(20000)])
   });
 
   if (!res.ok) {
-    throw new ProviderFailure(`HTTP ${res.status}`);
+    throw new ProviderFailure(`HTTP ${res.status}`, res.status);
   }
 
   const data = geminiEnvelope.parse(await res.json());
-  const text = data.candidates[0]?.content.parts.map((part) => part.text ?? '').join('').trim();
+  const text = data.candidates[0]?.content.parts
+    .filter((part) => !part.thought).map((part) => part.text ?? '').join('').trim();
   if (!text) throw new ProviderFailure('empty response text');
 
   const parsed = AssistantPlanOutputSchema.parse(extractJsonObject(text));
   return {
     provider: 'gemini',
-    modelLabel: 'Gemini 2.5 Flash (Google AI Studio)',
+    modelLabel: model.label,
     ...parsed
   };
 }
@@ -135,12 +172,12 @@ async function callGemini(
 async function callOpenAiCompatible(
   endpoint: string,
   token: string,
-  model: string,
+  model: ProviderModel,
   provider: 'huggingface' | 'groq',
-  modelLabel: string,
   system: string,
   user: string,
-  fetchImpl: typeof fetch
+  fetchImpl: typeof fetch,
+  deadline: AbortSignal
 ): Promise<AssistantPlan> {
   const res = await fetchImpl(endpoint, {
     method: 'POST',
@@ -149,18 +186,19 @@ async function callOpenAiCompatible(
       Authorization: `Bearer ${token}`
     },
     body: JSON.stringify({
-      model,
+      model: model.id,
       temperature: 0.3,
+      ...(provider === 'groq' ? { response_format: { type: 'json_object' } } : {}),
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user }
       ]
     }),
-    signal: AbortSignal.timeout(14000)
+    signal: AbortSignal.any([deadline, AbortSignal.timeout(provider === 'groq' ? 15000 : 20000)])
   });
 
   if (!res.ok) {
-    throw new ProviderFailure(`HTTP ${res.status}`);
+    throw new ProviderFailure(`HTTP ${res.status}`, res.status);
   }
 
   const data = chatEnvelope.parse(await res.json());
@@ -170,7 +208,7 @@ async function callOpenAiCompatible(
   const parsed = AssistantPlanOutputSchema.parse(extractJsonObject(content));
   return {
     provider,
-    modelLabel,
+    modelLabel: model.label,
     ...parsed
   };
 }
@@ -188,51 +226,42 @@ export async function generatePlanWithFailover(
   fetchImpl: typeof fetch = fetch
 ): Promise<AssistantPlan> {
   const { system, user } = buildPrompts(req);
+  // Leave time to return the built-in plan before Vercel ends the request.
+  const deadline = AbortSignal.timeout(110000);
+  const diagnostics: string[] = [];
 
-  if (env.GEMINI_API_KEY?.trim()) {
-    try {
-      return await callGemini(env.GEMINI_API_KEY.trim(), system, user, fetchImpl);
-    } catch (error) {
-      logProviderFailure('Gemini', error);
-    }
+  const geminiKey = env.GEMINI_API_KEY?.trim();
+  if (geminiKey) {
+    const gemini = await tryModels('Gemini', [
+      { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+      { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+      { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash-Lite' }
+    ], [400, 404], (model) => callGemini(geminiKey, model, system, user, fetchImpl, deadline), diagnostics, deadline);
+    if (gemini) return gemini;
   }
 
-  if (env.HF_TOKEN?.trim()) {
-    const hfModel = env.HF_MODEL?.trim() || 'Qwen/Qwen2.5-72B-Instruct';
-    try {
-      return await callOpenAiCompatible(
-        'https://router.huggingface.co/v1/chat/completions',
-        env.HF_TOKEN.trim(),
-        hfModel,
-        'huggingface',
-        `Hugging Face Router (${hfModel})`,
-        system,
-        user,
-        fetchImpl
-      );
-    } catch (error) {
-      logProviderFailure('Hugging Face Router', error);
-    }
+  const hfToken = env.HF_TOKEN?.trim();
+  if (hfToken) {
+    const models = [...new Set([env.HF_MODEL?.trim() || 'Qwen/Qwen2.5-72B-Instruct', 'meta-llama/Llama-3.3-70B-Instruct'])]
+      .map((id) => ({ id, label: `Hugging Face Router (${id})` }));
+    const huggingFace = await tryModels('Hugging Face Router', models, [404, 422], (model) =>
+      callOpenAiCompatible('https://router.huggingface.co/v1/chat/completions', hfToken, model, 'huggingface',
+        system, user, fetchImpl, deadline), diagnostics, deadline);
+    if (huggingFace) return huggingFace;
   }
 
-  if (env.GROQ_API_KEY?.trim()) {
-    try {
-      return await callOpenAiCompatible(
-        'https://api.groq.com/openai/v1/chat/completions',
-        env.GROQ_API_KEY.trim(),
-        'llama-3.3-70b-versatile',
-        'groq',
-        'Groq (Llama 3.3 70B)',
-        system,
-        user,
-        fetchImpl
-      );
-    } catch (error) {
-      logProviderFailure('Groq', error);
-    }
+  const groqKey = env.GROQ_API_KEY?.trim();
+  if (groqKey) {
+    const groq = await tryModels('Groq', [
+      { id: 'llama-3.3-70b-versatile', label: 'Groq (Llama 3.3 70B)' },
+      { id: 'openai/gpt-oss-120b', label: 'Groq (GPT-OSS 120B)' }
+    ], [400, 404, 410], (model) =>
+      callOpenAiCompatible('https://api.groq.com/openai/v1/chat/completions', groqKey, model, 'groq',
+        system, user, fetchImpl, deadline), diagnostics, deadline);
+    if (groq) return groq;
   }
 
-  return buildDeterministicPlan({
+  const fallback = buildDeterministicPlan({
     city: sanitizeUserText(req.city, 80),
     aqi: req.aqi,
     category: req.category,
@@ -248,4 +277,5 @@ export async function generatePlanWithFailover(
     exposureReductionPct: req.impactSummary.exposureReductionPct,
     annualCo2SavedKg: req.impactSummary.annualCo2SavedKg
   });
+  return diagnostics.length ? { ...fallback, debugReason: diagnostics.join('; ') } : fallback;
 }

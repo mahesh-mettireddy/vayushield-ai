@@ -1,5 +1,6 @@
-import { Leaf } from 'lucide-react';
-import { COMMUTE_LABELS } from '../engine/impactCalculator';
+import { Trees } from 'lucide-react';
+import type { CSSProperties } from 'react';
+import { calculateChoiceImpact, COMMUTE_LABELS } from '../engine/impactCalculator';
 import type { ChoiceImpactResult, ChoiceToggles, CommuteMode, HouseholdProfile } from '../types/airQuality';
 
 const HABITS: Array<{ key: keyof ChoiceToggles; label: string }> = [
@@ -26,6 +27,10 @@ export function ChoiceImpactSimulator({ profile, toggles, impact, hasTelemetry, 
     { name: 'Before', value: impact.baselineDailyExposureUgM3, width: 100 },
     { name: 'After', value: impact.projectedDailyExposureUgM3, width: 100 - impact.exposureReductionPct }
   ];
+  const maximumSavings = calculateChoiceImpact(0, { ...profile, chosenCommute: 'wfh' }, {
+    ...toggles, publicTransitOrWfhSwap: true, cleanCookingExhaust: true
+  }).annualCo2SavedKg;
+  const savingsShare = Math.min(100, Math.round(impact.annualCo2SavedKg / maximumSavings * 100));
   return (
     <div>
       <div className="panel-heading">
@@ -36,15 +41,28 @@ export function ChoiceImpactSimulator({ profile, toggles, impact, hasTelemetry, 
           <div className="exposure-title"><h3>Daily PM2.5 exposure</h3><strong>{impact.exposureReductionPct}% less</strong></div>
           {exposure.map(({ name, value, width }) => (
             <div className={'exposure-row exposure-' + name.toLowerCase()} key={name}>
-              <span>{name}</span><div className="exposure-track" aria-hidden="true"><i style={{ width: width + '%' }} /></div>
+              <span>{name}</span><div className="exposure-track" aria-hidden="true"><i
+                style={{ '--exposure-ratio': width / 100 } as CSSProperties} /></div>
               <strong>{value} <small>µg/m³</small></strong>
             </div>
           ))}
           {!hasTelemetry && <p className="field-feedback">Uses a sample PM2.5 reading until live data loads.</p>}
         </div>
         <div className="carbon-result">
-          <Leaf size={19} aria-hidden="true" /><h3>Annual CO₂ saved</h3>
-          <p><strong>{impact.annualCo2SavedKg.toLocaleString('en-IN')}</strong> kg</p>
+          <div className="carbon-ring" aria-hidden="true">
+            <svg viewBox="0 0 72 72" focusable="false">
+              <circle className="carbon-track" cx="36" cy="36" r="30" />
+              <circle className="carbon-arc" cx="36" cy="36" r="30" pathLength="100"
+                strokeDashoffset={100 - savingsShare} transform="rotate(-90 36 36)" />
+            </svg>
+            <Trees size={22} />
+          </div>
+          <div>
+            <h3>Annual CO₂ saved</h3>
+            <p><strong>{impact.annualCo2SavedKg.toLocaleString('en-IN')}</strong> kg</p>
+            <p className="carbon-trees">≈ {impact.treesEquivalentPerYear.toLocaleString('en-IN')} trees/year</p>
+            <p className="carbon-share">{savingsShare}% of modeled commute and cooking savings for your distance</p>
+          </div>
         </div>
       </div>
 

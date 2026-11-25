@@ -69,6 +69,30 @@ describe('App Integration & WCAG Accessibility', () => {
     await waitFor(() => {
       expect(screen.getByText('335')).toBeInTheDocument();
     });
+    const gauge = screen.getByRole('img', { name: 'CPCB NAQI gauge, 335 out of 500, Very Poor' });
+    expect(gauge).toBeVisible();
+    expect(gauge.querySelector('.gauge-stroke')).toHaveAttribute('pathLength', '100');
+    const chart = screen.getByRole('group', { name: 'Hourly NAQI chart' });
+    const bars = within(chart).getAllByRole('button');
+    const readout = screen.getByRole('status', { name: 'Selected forecast hour' });
+    expect(bars).toHaveLength(4);
+    await user.hover(bars[2]!);
+    expect(readout).toHaveTextContent('2 PM');
+    expect(readout).toHaveTextContent('NAQI 184');
+    expect(readout).toHaveTextContent('PM2.5 85');
+    expect(readout).toHaveTextContent('PM10 150');
+    expect(readout).toHaveTextContent(/sensitive groups/i);
+    await user.unhover(bars[2]!);
+    expect(readout).toHaveTextContent('12 PM');
+    bars[0]!.focus();
+    await user.keyboard('{ArrowRight}');
+    expect(bars[1]).toHaveFocus();
+    expect(bars[1]).toHaveAttribute('aria-pressed', 'true');
+    await user.keyboard('{End}');
+    expect(bars[3]).toHaveFocus();
+    expect(readout).toHaveTextContent('NAQI 354');
+    await user.click(bars[2]!);
+    expect(bars[2]).toHaveAttribute('aria-pressed', 'true');
 
     const tablist = screen.getByRole('tablist', { name: 'Air quality tools' });
     const tabs = within(tablist).getAllByRole('tab');
@@ -78,7 +102,7 @@ describe('App Integration & WCAG Accessibility', () => {
     expect(screen.getByRole('tabpanel', { name: 'AI Daily Plan' })).toBeVisible();
     expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
 
-    const generateBtn = screen.getByRole('button', { name: /generate plan/i });
+    const generateBtn = screen.getByRole('button', { name: 'Generate AI Routine' });
     await user.click(generateBtn);
 
     await waitFor(() => {
@@ -99,13 +123,15 @@ describe('App Integration & WCAG Accessibility', () => {
     expect(within(impact).getAllByRole('switch')).toHaveLength(6);
     await user.click(within(impact).getByRole('switch', { name: /Zero-Smoke Home/i }));
     expect(within(impact).getByText('85% less')).toBeVisible();
+    expect(within(impact).getByText(/trees\/year/i)).toBeVisible();
     await checkAccessibility();
 
     impactTab!.focus();
     await user.keyboard('{End}');
     expect(playbookTab).toHaveFocus();
     await user.type(screen.getByRole('searchbox', { name: 'Search the playbook' }), 'quasar');
-    expect(screen.getByRole('status')).toHaveTextContent('No exact keyword matches');
+    expect(within(screen.getByRole('tabpanel', { name: 'Playbook & Local HF' })).getByRole('status'))
+      .toHaveTextContent('No exact keyword matches');
     expect(screen.getByRole('button', { name: 'Local HF Semantic Match (WASM)' })).toBeEnabled();
     await checkAccessibility();
     playbookTab!.focus();

@@ -54,40 +54,43 @@ export const AssistantRequestSchema = z.object({
 
 export type AssistantRequest = z.infer<typeof AssistantRequestSchema>;
 
-export const AssistantPlanOutputSchema = z.object({
-  summary: z.string().min(10).max(600),
-  dailyRoutine: z
-    .array(
-      z.object({
-        timeBlock: z.string().min(2).max(80),
-        action: z.string().min(5).max(320),
-        whyItHelps: z.string().min(5).max(280)
-      })
-    )
-    .min(2)
-    .max(5),
-  indoorHacks: z
-    .array(
-      z.object({
-        title: z.string().min(2).max(100),
-        steps: z.string().min(5).max(320),
-        costTier: z.string().min(2).max(40),
-        impact: z.string().min(5).max(220)
-      })
-    )
-    .min(2)
-    .max(5),
-  sustainableSwaps: z
-    .array(
-      z.object({
-        swap: z.string().min(4).max(160),
-        directImpact: z.string().min(5).max(260)
-      })
-    )
-    .min(2)
-    .max(5),
-  safetyNote: z.string().min(10).max(300)
-});
+function normalizeKeys(value: unknown, aliases: Record<string, string>): unknown {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
+  const input = value as Record<string, unknown>;
+  const output = { ...input };
+  for (const [alias, canonical] of Object.entries(aliases)) {
+    if (Object.hasOwn(input, alias)) output[canonical] ??= input[alias];
+  }
+  return output;
+}
+
+const planText = z.string().trim().min(1).max(600);
+const routineStep = z.preprocess(
+  (value) => normalizeKeys(value, { time_block: 'timeBlock', why_it_helps: 'whyItHelps' }),
+  z.object({ timeBlock: z.string().trim().min(1).max(120), action: planText, whyItHelps: planText })
+);
+const indoorHack = z.preprocess(
+  (value) => normalizeKeys(value, { cost_tier: 'costTier' }),
+  z.object({ title: z.string().trim().min(1).max(160), steps: planText, costTier: z.string().trim().min(1).max(80), impact: planText })
+);
+const sustainableSwap = z.preprocess(
+  (value) => normalizeKeys(value, { direct_impact: 'directImpact' }),
+  z.object({ swap: z.string().trim().min(1).max(240), directImpact: planText })
+);
+
+export const AssistantPlanOutputSchema = z.preprocess(
+  (value) => normalizeKeys(value, {
+    daily_routine: 'dailyRoutine', indoor_hacks: 'indoorHacks',
+    sustainable_swaps: 'sustainableSwaps', safety_note: 'safetyNote'
+  }),
+  z.object({
+    summary: z.string().trim().min(1).max(1200),
+    dailyRoutine: z.array(routineStep).min(1).max(6),
+    indoorHacks: z.array(indoorHack).min(1).max(6),
+    sustainableSwaps: z.array(sustainableSwap).min(1).max(6),
+    safetyNote: planText
+  })
+);
 
 interface RateEntry {
   count: number;

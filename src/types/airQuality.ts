@@ -143,6 +143,7 @@ export interface SustainableSwap {
 export interface AssistantPlan {
   provider: LlmProviderName;
   modelLabel: string;
+  debugReason?: string;
   summary: string;
   dailyRoutine: RoutineStep[];
   indoorHacks: IndoorHack[];

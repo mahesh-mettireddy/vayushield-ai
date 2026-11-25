@@ -73,6 +73,7 @@ const VALID_PLAN_JSON = JSON.stringify({
 
 const ENV = { GEMINI_API_KEY: 'fixture-gemini', HF_TOKEN: 'fixture-hf', GROQ_API_KEY: 'fixture-groq' };
 const chatResponse = (content: string) => Response.json({ choices: [{ message: { content } }] });
+const geminiResponse = (text: string) => Response.json({ candidates: [{ content: { parts: [{ text }] } }] });
 
 describe('Multi-Provider Failover & Prompt Sanitization', () => {
   beforeEach(() => {
@@ -118,7 +119,10 @@ describe('Multi-Provider Failover & Prompt Sanitization', () => {
   it('sends Gemini JSON configuration and reads text across response parts', async () => {
     const half = Math.floor(VALID_PLAN_JSON.length / 2);
     const mockFetch = vi.fn<typeof fetch>().mockResolvedValueOnce(Response.json({
-      candidates: [{ content: { parts: [{ text: VALID_PLAN_JSON.slice(0, half) }, { text: VALID_PLAN_JSON.slice(half) }] } }]
+      candidates: [{ content: { parts: [
+        { text: 'Reasoning metadata', thought: true },
+        { text: VALID_PLAN_JSON.slice(0, half) }, { text: VALID_PLAN_JSON.slice(half) }
+      ] } }]
     }));
     expect((await generatePlanWithFailover(SAMPLE_REQ, ENV, mockFetch)).provider).toBe('gemini');
     const [url, init] = mockFetch.mock.calls[0]!;
@@ -127,7 +131,7 @@ describe('Multi-Provider Failover & Prompt Sanitization', () => {
     expect(JSON.parse(String(init?.body))).toMatchObject({
       systemInstruction: { parts: [{ text: expect.any(String) }] },
       contents: [{ role: 'user', parts: [{ text: expect.any(String) }] }],
-      generationConfig: { responseMimeType: 'application/json' }
+      generationConfig: { temperature: 0.3, responseMimeType: 'application/json', thinkingConfig: { thinkingBudget: 0 } }
     });
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
@@ -146,6 +150,7 @@ describe('Multi-Provider Failover & Prompt Sanitization', () => {
     expect(new Headers(init?.headers).get('authorization')).toBe('Bearer fixture-groq');
     expect(JSON.parse(String(init?.body))).toMatchObject({
       model: 'llama-3.3-70b-versatile',
+      response_format: { type: 'json_object' },
       messages: [{ role: 'system' }, { role: 'user' }]
     });
   });
@@ -162,6 +167,7 @@ describe('Multi-Provider Failover & Prompt Sanitization', () => {
         chosenCommuteLabel: 'Work From Home' }
     }, ENV, mockFetch);
     expect(plan.provider).toBe('deterministic-fallback');
+    expect(plan.debugReason).toBe('Hugging Face Router HTTP 401');
     expect(plan.summary).toContain('Dominant pollutant: O₃. Current PM2.5: 28.6 µg/m³');
     expect(plan.summary).not.toContain(userQuestion);
     expect(plan.dailyRoutine[0]?.action).toMatch(/normal outdoor activity/i);
@@ -172,6 +178,64 @@ describe('Multi-Provider Failover & Prompt Sanitization', () => {
       ['[assistant] Hugging Face Router: HTTP 401'],
       ['[assistant] Groq: invalid JSON']
     ]);
+  });
+
+  it.each([400, 404])('retries Gemini 2.0 once after Gemini 2.5 returns HTTP %i', async (status) => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response('', { status }))
+      .mockResolvedValueOnce(geminiResponse(VALID_PLAN_JSON));
+    const plan = await generatePlanWithFailover(SAMPLE_REQ, ENV, fetchMock);
+    expect(plan.modelLabel).toBe('Gemini 2.0 Flash');
+    expect(fetchMock.mock.calls[1]?.[0]).toContain('/gemini-2.0-flash:');
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body)).generationConfig).not.toHaveProperty('thinkingConfig');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('tries a supported Gemini model if both legacy models are unavailable', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response('', { status: 404 }))
+      .mockResolvedValueOnce(new Response('', { status: 404 }))
+      .mockResolvedValueOnce(geminiResponse(VALID_PLAN_JSON));
+    expect((await generatePlanWithFailover(SAMPLE_REQ, ENV, fetchMock)).modelLabel).toBe('Gemini 2.5 Flash-Lite');
+    expect(fetchMock.mock.calls[2]?.[0]).toContain('/gemini-2.5-flash-lite:');
+  });
+
+  it.each([404, 422])('tries the Hugging Face Llama model after HTTP %i', async (status) => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response('', { status }))
+      .mockResolvedValueOnce(chatResponse(VALID_PLAN_JSON));
+    const plan = await generatePlanWithFailover(SAMPLE_REQ, { HF_TOKEN: 'test-hf', HF_MODEL: 'custom/model' }, fetchMock);
+    expect(fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init?.body)).model))
+      .toEqual(['custom/model', 'meta-llama/Llama-3.3-70B-Instruct']);
+    expect(plan.provider).toBe('huggingface');
+  });
+
+  it('switches to a supported Groq model after the retired model rejects the request', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response('', { status: 400 }))
+      .mockResolvedValueOnce(chatResponse(VALID_PLAN_JSON));
+    expect((await generatePlanWithFailover(SAMPLE_REQ, { GROQ_API_KEY: 'test-groq' }, fetchMock)).provider).toBe('groq');
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toMatchObject({
+      model: 'openai/gpt-oss-120b', response_format: { type: 'json_object' }
+    });
+  });
+
+  it('normalizes alternate keys, long fields and single-item arrays before validating a live reply', async () => {
+    const summary = 'S'.repeat(1100);
+    const action = 'A'.repeat(590);
+    const remote = {
+      summary, daily_routine: [{ time_block: 'Morning', action, why_it_helps: 'Avoid traffic.' }],
+      indoor_hacks: [{ title: 'Filter', steps: 'Run it in the bedroom.', cost_tier: 'Budget', impact: 'Filters particles.' }],
+      sustainable_swaps: [{ swap: 'Travel by rail', direct_impact: 'Lower emissions.' }], safety_note: 'General information.'
+    };
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(geminiResponse(JSON.stringify(remote)));
+    const plan = await generatePlanWithFailover(SAMPLE_REQ, ENV, fetchMock);
+    expect(plan.provider).toBe('gemini');
+    expect(plan).toMatchObject({
+      summary, dailyRoutine: [{ timeBlock: 'Morning', action, whyItHelps: 'Avoid traffic.' }],
+      indoorHacks: [{ costTier: 'Budget' }], sustainableSwaps: [{ directImpact: 'Lower emissions.' }],
+      safetyNote: 'General information.'
+    });
   });
 
   it('uses deterministic fallback when no API keys are configured', async () => {
@@ -194,6 +258,20 @@ describe('Multi-Provider Failover & Prompt Sanitization', () => {
     const response = mockResponse();
     await assistantHandler({ method: 'POST', headers: {}, body: '{invalid' } as VercelRequest, response);
     expect(response.status).toHaveBeenCalledWith(400);
+  });
+
+  it.each(['gemini', 'huggingface', 'groq'] as const)('returns a %s plan through POST /api/assistant', async (provider) => {
+    for (const [key, value] of Object.entries(ENV)) vi.stubEnv(key, value);
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    if (provider !== 'gemini') fetchMock.mockResolvedValueOnce(new Response('', { status: 429 }));
+    if (provider === 'groq') fetchMock.mockResolvedValueOnce(new Response('', { status: 429 }));
+    fetchMock.mockResolvedValueOnce(provider === 'gemini' ? geminiResponse(VALID_PLAN_JSON) : chatResponse(VALID_PLAN_JSON));
+    const response = mockResponse();
+    await assistantHandler({
+      method: 'POST', headers: { 'x-forwarded-for': 'test-' + provider }, body: JSON.stringify(SAMPLE_REQ)
+    } as unknown as VercelRequest, response);
+    expect(response.status).toHaveBeenCalledWith(200);
+    expect(response.json).toHaveBeenCalledWith(expect.objectContaining({ provider }));
   });
 
   it('reports provider flags without revealing credentials', () => {
