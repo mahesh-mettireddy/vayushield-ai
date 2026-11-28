@@ -232,9 +232,8 @@ details[open] > summary .details-arrow { rotate: 180deg; }
 .room-good-threshold { stroke: #0c7a57; stroke-width: 1.6; stroke-dasharray: 6 5; }
 .room-good-pill { fill: rgba(255, 255, 255, .88); stroke: #b8ddd0; stroke-width: 1; }
 .room-good-label { fill: #0c6b4d; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.room-curve-area { animation: curve-fade 550ms ease-out both; }
-.room-curve-line { stroke: #116456; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 100; stroke-dashoffset: 0; animation: curve-draw 850ms cubic-bezier(.22, .75, .28, 1) both; }
-@keyframes curve-draw { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
+.room-curve-group { animation: curve-fade 220ms ease-out both; }
+.room-curve-line { stroke: #116456; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: none; }
 @keyframes curve-fade { from { opacity: 0; } to { opacity: 1; } }
 .room-sample-dot { fill: #116456; stroke: #ffffff; stroke-width: 1.25; }
 .room-safe-callout { animation: curve-fade 450ms ease-out 220ms both; }
@@ -435,7 +434,7 @@ details[open] > summary .details-arrow { rotate: 180deg; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ambient-glow, .air-particle, .gauge-arc, .naqi-bar, .hour-content, .workspace-panel:not([hidden]), .provider-badge[data-live="true"],
-  .skeleton-card::after, .timeline li, .room-curve-line, .room-curve-area, .room-safe-callout { animation: none !important; }
+  .skeleton-card::after, .timeline li, .room-curve-group, .room-safe-callout { animation: none !important; }
   .gauge-arc, .tab-indicator, .bar-column::before, .naqi-bar, .exposure-track i, .habit-row,
   .switch-track, .switch-track::after, .carbon-arc { transition: none !important; }
 }

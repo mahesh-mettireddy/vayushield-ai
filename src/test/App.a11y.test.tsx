@@ -140,16 +140,7 @@ describe('App Integration & WCAG Accessibility', () => {
     expect(within(community).getByText('143')).toBeVisible();
 
     const roomSimulator = screen.getByRole('region', { name: 'Bedroom Time-to-Clean Simulator' });
-    const curveChart = within(roomSimulator).getByRole('img', { name: /Bedroom PM2\.5 decay chart/i });
-    expect(curveChart).toBeVisible();
-    expect(curveChart.querySelector('.room-curve-line')).toHaveAttribute('pathLength', '100');
-    await user.click(within(roomSimulator).getByRole('button', { name: 'Small Bedroom' }));
-    expect(within(roomSimulator).getByRole('button', { name: 'Small Bedroom' })).toHaveAttribute('aria-pressed', 'true');
-    await user.click(within(roomSimulator).getByRole('button', { name: 'True HEPA Purifier' }));
-    expect(within(roomSimulator).getByRole('button', { name: 'True HEPA Purifier' })).toHaveAttribute('aria-pressed', 'true');
-    expect(within(roomSimulator).getByText(/Start your True HEPA Purifier/i)).toBeVisible();
-    await user.click(within(roomSimulator).getByRole('button', { name: 'Windows Sealed Only' }));
-    expect(within(roomSimulator).getByText(/Sealed windows alone cannot reach 30 µg\/m³/i)).toBeVisible();
+    expect(within(roomSimulator).getByRole('img', { name: /Bedroom PM2\.5 decay chart/i })).toBeVisible();
     await checkAccessibility();
 
     impactTab!.focus();
@@ -164,6 +155,50 @@ describe('App Integration & WCAG Accessibility', () => {
     await user.keyboard('{ArrowRight}');
     expect(planTab).toHaveFocus();
     expect(screen.getByText(/today’s low-emission schedule/i)).toBeVisible();
+  });
+
+  it('renders Bedroom Time-to-Clean Simulator with a continuous 0–120m SVG curve across presets', async () => {
+    const user = userEvent.setup();
+    const { container } = render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('335')).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole('tab', { name: 'Impact Lab' }));
+
+    const roomSimulator = screen.getByRole('region', { name: 'Bedroom Time-to-Clean Simulator' });
+    const curveChart = within(roomSimulator).getByRole('img', { name: /Bedroom PM2\.5 decay chart/i });
+
+    const assertContinuousCurve = () => {
+      const line = curveChart.querySelector('.room-curve-line');
+      expect(line).not.toBeNull();
+      expect(line).not.toHaveAttribute('pathLength');
+      expect(line).not.toHaveAttribute('stroke-dasharray');
+      const d = line?.getAttribute('d') ?? '';
+      expect(d).toMatch(/^M 52\.0 \d+\.\d+ .* L 616\.0 \d+\.\d+$/);
+      expect(curveChart.querySelectorAll('.room-sample-dot')).toHaveLength(13);
+    };
+
+    assertContinuousCurve();
+    await user.click(within(roomSimulator).getByRole('button', { name: 'Small Bedroom' }));
+    expect(within(roomSimulator).getByRole('button', { name: 'Small Bedroom' })).toHaveAttribute('aria-pressed', 'true');
+    assertContinuousCurve();
+
+    await user.click(within(roomSimulator).getByRole('button', { name: 'True HEPA Purifier' }));
+    expect(within(roomSimulator).getByRole('button', { name: 'True HEPA Purifier' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(roomSimulator).getByText(/Start your True HEPA Purifier/i)).toBeVisible();
+    assertContinuousCurve();
+
+    await user.click(within(roomSimulator).getByRole('button', { name: 'Living Room' }));
+    expect(within(roomSimulator).getByRole('button', { name: 'Living Room' })).toHaveAttribute('aria-pressed', 'true');
+    assertContinuousCurve();
+
+    await user.click(within(roomSimulator).getByRole('button', { name: 'Windows Sealed Only' }));
+    expect(within(roomSimulator).getByText(/Sealed windows alone cannot reach 30 µg\/m³/i)).toBeVisible();
+    assertContinuousCurve();
+
+    const results = await axe(container, { rules: { 'color-contrast': { enabled: false } } });
+    expect(results.violations).toEqual([]);
   });
 
   it('offers a labeled manual copy field when clipboard access is denied', async () => {

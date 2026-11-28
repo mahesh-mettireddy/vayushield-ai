@@ -191,8 +191,10 @@ export function RoomCleanCurve({ ambientPm25, hasTelemetry }: RoomCleanCurveProp
             className="room-good-threshold"
           />
 
-          <path key={`area-${curveAnimationKey}`} d={areaPath} fill={`url(#${gradientId})`} className="room-curve-area" />
-          <path key={`line-${curveAnimationKey}`} d={linePath} fill="none" pathLength={100} className="room-curve-line" />
+          <g key={curveAnimationKey} className="room-curve-group">
+            <path d={areaPath} fill={`url(#${gradientId})`} className="room-curve-area" />
+            <path d={linePath} fill="none" className="room-curve-line" />
+          </g>
 
           {points.map((point) => (
             <circle
