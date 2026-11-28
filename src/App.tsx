@@ -169,9 +169,7 @@ export default function App() {
       </main>
 
       <footer className="page-width app-footer">
-        <p><a href="https://open-meteo.com/en/docs/air-quality-api">Open-Meteo</a>
-          <span aria-hidden="true"> / </span><a href="https://openaq.org/">OpenAQ</a>
-          <span aria-hidden="true"> / </span><a href="https://www.pib.gov.in/newsite/printrelease.aspx?relid=110654">India CPCB NAQI</a></p>
+        <p>VayuShield AI · Data powered by <a href="https://open-meteo.com/en/docs/air-quality-api">Open-Meteo Air Quality API (CC BY 4.0)</a>, <a href="https://openaq.org/">OpenAQ</a>, and <a href="https://www.pib.gov.in/newsite/printrelease.aspx?relid=110654">India CPCB NAQI</a>.</p>
         <p>Forecasts and impact estimates are for general information.</p>
       </footer>
     </>

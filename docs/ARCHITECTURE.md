@@ -79,7 +79,8 @@ Pure deterministic model translating household choices into verifiable daily/ann
   - `cleanCookingExhaust`: using chimney/exhaust + lid/induction reduces indoor cooking PM2.5 by `35%` (remaining factor `0.65`).
   - `n95OutdoorMask`: reduces outdoor inhaled PM2.5 by `80%` during outdoor hours (weighted `0.25` of day → overall daily reduction factor `0.80`).
   - `zeroSmokeIndoor`: models a `15%` reduction in indoor PM2.5 from avoiding incense and smoke-producing mosquito coils.
-  - Outputs: `baselineDailyExposureUgM3`, `projectedDailyExposureUgM3`, `exposureReductionPct`, `dailyCo2SavedKg`, `annualCo2SavedKg`, and human-readable impact rationale per toggle.
+  - **Community Scale Multiplier** (`calculateCommunityImpact`): scales single-household `annualCo2SavedKg` across `1–200` households into metric tonnes per year (`annualCo2Tonnes`) and mature-tree equivalents (`annualCo2Kg / 21`, rounded to `0.1` trees/yr).
+  - Outputs: `baselineDailyExposureUgM3`, `projectedDailyExposureUgM3`, `exposureReductionPct`, `dailyCo2SavedKg`, `annualCo2SavedKg`, `treesEquivalentPerYear`, and human-readable impact rationale per toggle.
 
 ### 2.4 Bedroom Time-to-Clean ACH Physics Simulator (`src/engine/roomCleanPhysics.ts`)
 Pure deterministic single-zone exponential decay model estimating how long indoor PM2.5 takes to reach India's CPCB **Good** ceiling (`30 µg/m³`) across room volumes and filtration setups:

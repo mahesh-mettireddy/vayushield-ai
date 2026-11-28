@@ -34,7 +34,7 @@ jobs:
       - name: Production build
         run: npm run build
 
-      - name: Verify repo size under 10 MB PromptWars limit
+      - name: Verify lightweight repository size (< 10 MB)
         run: |
           SIZE_KB=$(du -sk --exclude=node_modules --exclude=.git --exclude=dist . | cut -f1)
           echo "Tracked repo size: ${SIZE_KB} KB"
