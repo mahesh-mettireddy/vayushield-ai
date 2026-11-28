@@ -65,8 +65,8 @@ export function CleanAirWindowCard({ hourly, analysis }: { hourly: HourlyAirPoin
         </div>
         <div className="forecast-times" aria-hidden="true">
           {[hourly[0], hourly[6], hourly[12], hourly[18], hourly.at(-1)]
-            .filter((point, index, entries) => point && entries.indexOf(point) === index)
-            .map((point) => <span key={point!.time}>{point!.hourLabel}</span>)}
+            .filter((point, index, entries): point is HourlyAirPoint => Boolean(point) && entries.indexOf(point) === index)
+            .map((point) => <span key={point.time}>{point.hourLabel}</span>)}
         </div>
       </> : <p className="field-feedback">Hourly forecast unavailable.</p>}
 

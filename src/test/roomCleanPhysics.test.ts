@@ -6,6 +6,13 @@ import {
   simulateRoomCleanTime
 } from '../engine/roomCleanPhysics';
 
+function requireNumber(value: number | null | undefined, label: string): number {
+  if (typeof value !== 'number') {
+    throw new Error(`Expected numeric value for ${label}`);
+  }
+  return value;
+}
+
 describe('Bedroom Time-to-Clean ACH Physics Engine', () => {
   it('returns minutesToSafe = 0 when starting indoor air is already within CPCB Good (<= 30 µg/m³)', () => {
     const clean = simulateRoomCleanTime(25, 'master_bedroom', 'sealed_only');
@@ -32,8 +39,11 @@ describe('Bedroom Time-to-Clean ACH Physics Engine', () => {
     expect(result.points.at(-1)?.pm25).toBe(result.endPm25At120Min);
 
     for (let i = 1; i < result.points.length; i += 1) {
-      expect(result.points[i]!.minute - result.points[i - 1]!.minute).toBe(10);
-      expect(result.points[i]!.pm25).toBeLessThanOrEqual(result.points[i - 1]!.pm25);
+      const curr = result.points[i];
+      const prev = result.points[i - 1];
+      if (!curr || !prev) throw new Error('Missing simulation point');
+      expect(curr.minute - prev.minute).toBe(10);
+      expect(curr.pm25).toBeLessThanOrEqual(prev.pm25);
     }
     expect(result.endPm25At120Min).toBeLessThan(result.startPm25);
   });
@@ -49,9 +59,9 @@ describe('Bedroom Time-to-Clean ACH Physics Engine', () => {
 
     expect(corsi.endPm25At120Min).toBeLessThan(sealed.endPm25At120Min * 0.35);
     expect(hepa.endPm25At120Min).toBeLessThan(sealed.endPm25At120Min * 0.3);
-    expect(hepa.minutesToSafe).not.toBeNull();
-    expect(hepa.minutesToSafe!).toBeGreaterThan(0);
-    expect(hepa.minutesToSafe!).toBeLessThanOrEqual(120);
+    const hepaMinutes = requireNumber(hepa.minutesToSafe, 'hepa.minutesToSafe');
+    expect(hepaMinutes).toBeGreaterThan(0);
+    expect(hepaMinutes).toBeLessThanOrEqual(120);
   });
 
   it('takes longer in a larger living room than a small bedroom for the same purifier', () => {
@@ -61,13 +71,13 @@ describe('Bedroom Time-to-Clean ACH Physics Engine', () => {
 
     expect(small.ach).toBeGreaterThan(master.ach);
     expect(master.ach).toBeGreaterThan(living.ach);
-    expect(small.minutesToSafe).not.toBeNull();
-    expect(master.minutesToSafe).not.toBeNull();
-    expect(living.minutesToSafe).not.toBeNull();
-    expect(living.minutesToSafe!).toBeGreaterThan(master.minutesToSafe!);
-    expect(master.minutesToSafe!).toBeGreaterThan(small.minutesToSafe!);
+    const smallMin = requireNumber(small.minutesToSafe, 'small');
+    const masterMin = requireNumber(master.minutesToSafe, 'master');
+    const livingMin = requireNumber(living.minutesToSafe, 'living');
+    expect(livingMin).toBeGreaterThan(masterMin);
+    expect(masterMin).toBeGreaterThan(smallMin);
     expect(master.headline).toContain('DIY Corsi-Rosenthal Box');
-    expect(master.headline).toContain(`${master.minutesToSafe} minutes before bedtime`);
+    expect(master.headline).toContain(`${masterMin} minutes before bedtime`);
   });
 
   it('matches specified room volumes, CADR specs, and handles non-finite inputs safely', () => {

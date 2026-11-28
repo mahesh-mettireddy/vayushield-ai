@@ -4,7 +4,7 @@
 
 [![Live App](https://img.shields.io/badge/Live_Demo-vayushield--ai--rose.vercel.app-116456?style=flat-square)](https://vayushield-ai-rose.vercel.app/)
 [![TypeScript Strict](https://img.shields.io/badge/TypeScript-5.7_Strict-1e40af?style=flat-square)](tsconfig.json)
-[![Tests](https://img.shields.io/badge/Tests-50_Passing-0c6b4d?style=flat-square)](src/test/App.a11y.test.tsx)
+[![Tests](https://img.shields.io/badge/Tests-81_Passing-0c6b4d?style=flat-square)](src/test/App.a11y.test.tsx)
 [![Security Audit](https://img.shields.io/badge/npm_audit-0_Vulnerabilities-0c6b4d?style=flat-square)](package.json)
 [![Accessibility](https://img.shields.io/badge/WCAG_2.1_AA-0_axe_Violations-0c6b4d?style=flat-square)](src/test/App.a11y.test.tsx)
 [![Repository Size](https://img.shields.io/badge/Repository-%3C_1_MB-116456?style=flat-square)](.github/workflows/ci.yml)
@@ -24,6 +24,34 @@ VayuShield AI converts live urban air pollution telemetry into verifiable, house
 | **Indoor Air Physics** | Vague tips such as "run an air purifier." | **Bedroom Time-to-Clean ACH Simulator** ([`roomCleanPhysics.ts`](src/engine/roomCleanPhysics.ts), [`RoomCleanCurve.tsx`](src/components/RoomCleanCurve.tsx)) solving exponential decay $C(t) = C_{eq} + (C_0 - C_{eq})e^{-\text{ACH} \cdot t/60}$ across room volumes & CADR setups to exact minutes-to-`30 µg/m³`. |
 | **Household & Community Scale** | Qualitative slogans with no measurable tradeoff comparison. | **Choice-Impact & Community Scale Engine** ([`impactCalculator.ts`](src/engine/impactCalculator.ts)) computing daily `µg/m³` exposure drops (capped at 92%), annual CO₂ savings, tree equivalents, `1–200` household scaling, and 1-click Family Alerts ([`communityAlert.ts`](src/engine/communityAlert.ts)). |
 | **Resilience & Privacy** | Single-provider lock-in or browser-exposed `VITE_*` API keys. | **Zero-Key-Leak 4-Tier Server Failover** ([`providers.ts`](api/_lib/providers.ts)): `Gemini 2.5 Flash` → `Hugging Face Router` → `Groq` → `Deterministic Fallback`, plus opt-in lazy **Browser WASM Semantic Search** (`@huggingface/transformers`). |
+
+---
+
+## Approach
+
+1. **Separate deterministic math from generative language**: All health bands, pollutant sub-indices, hourly window rankings, exposure reductions, carbon savings, and exponential indoor PM2.5 decay curves are computed purely in strict TypeScript under [`src/engine/`](src/engine/). LLMs only format grounded schedules from verified numbers and never compute AQI scores.
+2. **Design for graceful offline and free-tier failover**: The serverless assistant chains `Gemini 2.5 Flash` → `Hugging Face Router` → `Groq` → `Deterministic Fallback`, while the client falls back cleanly to direct Open-Meteo telemetry and built-in deterministic planning during pure static or offline execution.
+3. **Keep architecture modular, bounded, and accessible by default**: Every runtime module stays focused (`< 250` lines), external payloads are validated at trust boundaries with Zod or strict runtime guards, in-memory caches use bounded TTL/LRU eviction, and WCAG 2.1 AA semantics (`ErrorBoundary` recovery alerts, `aria-expanded`/`aria-controls` disclosures, SVG `<title>`/`<desc>`, and keyboard navigation) are verified automatically on every build.
+
+---
+
+## Assumptions
+
+- **Single-zone indoor mixing**: The Bedroom Time-to-Clean Simulator models a well-mixed single room (`C(t) = C_eq + (C₀ − C_eq)·e^(−ACH·t/60)`) with a 9 ft ceiling, `0.4 h⁻¹` background infiltration, and initial indoor PM2.5 estimated at `78%` of outdoor ambient PM2.5.
+- **Urban commute benchmarks & workdays**: Commute CO₂ calculations assume `240` round-trip commute days per year using standard urban per-passenger emission factors (`0.192 kg CO₂/km` solo car down to `0` for cycling/walking/WFH) and `21 kg CO₂/year` per mature tree.
+- **Forecast availability & units**: Open-Meteo supplies hourly pollutant series in `µg/m³` (with CO converted from `µg/m³` to `mg/m³` for CPCB NAQI interpolation). Optional OpenAQ v3 `/v3/locations` lookups supply nearest ground-station provenance metadata rather than direct sensor concentration overrides.
+- **Stateless serverless instances**: Rate limiting (`20` requests per `5` minutes per IP) and telemetry caching (`15` minutes or next forecast hour) are bounded in-memory per serverless instance (`500`-entry TTL/LRU cap) alongside CDN edge `Cache-Control` headers.
+- **Non-medical guidance**: Outputs provide educational and household planning estimates and are not clinical or medical advice.
+
+---
+
+## How it Works
+
+1. **Location & Live Telemetry (`GET /api/air-quality`)**: Selecting a preset, searching via Open-Meteo Geocoding, or using browser geolocation fetches current and 48-hour forecast pollutant series (`PM2.5`, `PM10`, `NO₂`, `SO₂`, `O₃`, `CO`) validated with Zod and cached up to 15 minutes (or until the next forecast hour).
+2. **CPCB NAQI & 24h Clean-Air Window Engine**: `readOpenMeteoForecast` converts `CO` (`µg/m³ → mg/m³`), interpolates continuous CPCB sub-indices (`0–500`), slices strictly upcoming 24 hours in the city's local timezone, and `analyzeCleanAirWindows` ranks consecutive 2-hour pairs by overall NAQI first (breaking ties by `PM2.5`).
+3. **Choice-Impact, Community Scale & ACH Room Physics**: Toggling daily habits, swapping commutes, scaling `1–200` households, or switching bedroom size & CADR presets recalculates personal exposure drops (capped at `92%`), annual CO₂ savings, and exact minutes to reach India CPCB Good (`30 µg/m³`) synchronously in the browser.
+4. **Grounded Routine Planner (`POST /api/assistant`)**: Validates request payload size (`<= 16 KB`) and schema, enforces per-IP rate limits using trusted platform headers, sanitizes prompt text, and dispatches through the 4-tier LLM failover chain with Zod schema output normalization.
+5. **Opt-In Local Semantic Playbook**: Keyword search runs instantaneously offline; clicking **Local HF Semantic Match (WASM)** lazily loads `@huggingface/transformers` (`Xenova/all-MiniLM-L6-v2`) inside the browser CSP without external LLM calls.
 
 ---
 
@@ -82,8 +110,8 @@ Each scientific boundary, serverless boundary, and SVG rendering edge case is gu
    - When ground-level ozone (`O₃`) drives overall NAQI above `PM2.5`, ranking slots by `PM2.5` alone misidentifies high-ozone hours as clean. `analyzeCleanAirWindows` ranks consecutive 2-hour windows by average overall NAQI first (breaking ties by `avgPm25`) and clamps `exposureSavingsPct` to `0` when the cleanest NAQI slot has equal or higher `PM2.5`.
 5. **Serverless ESM Isolation & Opt-In Lazy WASM ([`api/_lib/`](api/_lib/), [`src/services/semanticPlaybook.ts`](src/services/semanticPlaybook.ts))**
    - Node 22 ESM serverless functions use explicit `.js` module specifiers, standard `fetch` + `zod`, and keep secrets strictly server-side. Browser-side `@huggingface/transformers` loads only on explicit user opt-in via dynamic `import()` with `useWasmCache = false` aligned to [`vercel.json`](vercel.json) CSP.
-6. **Continuous SVG Decay Curve Rendering ([`src/components/RoomCleanCurve.tsx`](src/components/RoomCleanCurve.tsx), [`src/styles/index.css`](src/styles/index.css))**
-   - Animating multi-segment dynamic SVG paths with `pathLength` + `stroke-dasharray` can cause partial stroke cut-offs in Chromium across preset switches. The Bedroom Time-to-Clean chart renders a plain continuous `<path>` (`stroke-dasharray: none`) inside a GPU-friendly `220ms` opacity fade group, verified across all room and filtration presets in [`src/test/App.a11y.test.tsx`](src/test/App.a11y.test.tsx).
+6. **Continuous SVG Decay Curve Rendering ([`src/components/RoomCleanCurve.tsx`](src/components/RoomCleanCurve.tsx), [`src/components/RoomCleanChartSvg.tsx`](src/components/RoomCleanChartSvg.tsx), [`src/styles/workspace.css`](src/styles/workspace.css))**
+   - Animating multi-segment dynamic SVG paths with `pathLength` + `stroke-dasharray` can cause partial stroke cut-offs in Chromium across preset switches. The Bedroom Time-to-Clean chart renders a plain continuous `<path>` (`stroke-dasharray: none`) inside a GPU-friendly `220ms` opacity fade group with `<title>` and `<desc>` labels, verified across all room and filtration presets in [`src/test/App.keyboard.test.tsx`](src/test/App.keyboard.test.tsx).
 
 ---
 
@@ -91,11 +119,11 @@ Each scientific boundary, serverless boundary, and SVG rendering edge case is gu
 
 | Pillar | Implementation & Verification Proof | Primary Files & Commands |
 | :--- | :--- | :--- |
-| **Code Quality** | Strict TypeScript (`strict: true`, `noUnusedLocals`, `noUncheckedIndexedAccess`), pure deterministic scientific engines separated from React UI, Zod runtime validation on all API inputs/outputs, and clean ESM module boundaries. | [`tsconfig.json`](tsconfig.json), [`src/engine/`](src/engine/), [`api/_lib/schemas.ts`](api/_lib/schemas.ts) · `npm run typecheck` |
-| **Security** | Zero browser-exposed secrets (no `VITE_*` API keys), prompt-injection delimiter stripping (`sanitizeUserText`), per-IP rate limiting (`20` req / `5 min` → `429` with `Retry-After`), strict HTTP headers (`CSP`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Permissions-Policy`), and `0` production dependency vulnerabilities. | [`vercel.json`](vercel.json), [`api/assistant.ts`](api/assistant.ts), [`api/air-quality.ts`](api/air-quality.ts), [`.env.example`](.env.example) · `npm audit --omit=dev` |
-| **Efficiency** | Sub-1 MB repository footprint (`< 10 MB` CI budget), 15-min/hour-aligned telemetry edge caching (`s-maxage`), parallel Open-Meteo + OpenAQ requests with `AbortSignal.timeout`, manual Vite vendor chunking (`react`, `icons`), and lazy-loaded WASM embeddings. | [`.github/workflows/ci.yml`](.github/workflows/ci.yml), [`vite.config.ts`](vite.config.ts), [`src/services/semanticPlaybook.ts`](src/services/semanticPlaybook.ts) · `npm run build` |
-| **Testing** | 7 test suites (`50` automated tests) covering CPCB NAQI boundaries & CO conversion, future-only 24h windows & ozone ties, exposure & Community Scale math, ACH indoor decay physics, Family Alert formatting, 4-tier failover, and UI/axe accessibility regressions. | [`src/test/cpcbAqi.test.ts`](src/test/cpcbAqi.test.ts), [`src/test/cleanAirWindow.test.ts`](src/test/cleanAirWindow.test.ts), [`src/test/impactCalculator.test.ts`](src/test/impactCalculator.test.ts), [`src/test/roomCleanPhysics.test.ts`](src/test/roomCleanPhysics.test.ts), [`src/test/communityAlert.test.ts`](src/test/communityAlert.test.ts), [`src/test/providerFailover.test.ts`](src/test/providerFailover.test.ts), [`src/test/App.a11y.test.tsx`](src/test/App.a11y.test.tsx) · `npm test` |
-| **Accessibility** | WCAG 2.1 AA compliance enforced via `eslint-plugin-jsx-a11y` and `vitest-axe` (`0` violations): skip link, semantic landmarks, `aria-live="polite"` readouts, keyboard arrow/Home/End navigation on forecast bars & tabs, `aria-pressed` toggles, `role="img"` chart descriptions, and `prefers-reduced-motion` support. | [`eslint.config.js`](eslint.config.js), [`src/styles/index.css`](src/styles/index.css), [`src/components/RoomCleanCurve.tsx`](src/components/RoomCleanCurve.tsx), [`src/test/App.a11y.test.tsx`](src/test/App.a11y.test.tsx) · `npm run lint` |
+| **Code Quality** | Strict TypeScript (`strict: true`, `noUnusedLocals`, `noUncheckedIndexedAccess`), strict ESLint (`no-non-null-assertion`, `no-explicit-any`), modular `< 250`-line files, top-level [`ErrorBoundary.tsx`](src/components/ErrorBoundary.tsx), bounded `BoundedTtlCache`, and Zod/runtime validation on external payloads. | [`tsconfig.json`](tsconfig.json), [`eslint.config.js`](eslint.config.js), [`api/_lib/boundedCache.ts`](api/_lib/boundedCache.ts), [`api/_lib/schemas.ts`](api/_lib/schemas.ts) · `npm run typecheck` |
+| **Security** | Zero browser-exposed secrets, `16 KB` pre-parse body cap (`413`), prompt-injection delimiter stripping (`sanitizeUserText`), bounded per-IP rate limiting (`20` req / `5 min` → `429` with `Retry-After`) preferring trusted proxy headers, strict HTTP headers (CSP with zero `script-src 'unsafe-inline'`; `style-src 'unsafe-inline'` kept only for dynamic runtime `style={{ ... }}` percentage widths, gauge offsets, and transforms, plus `X-Frame-Options: DENY`, `nosniff`, `Permissions-Policy`), and `0` production dependency vulnerabilities. | [`vercel.json`](vercel.json), [`api/assistant.ts`](api/assistant.ts), [`api/air-quality.ts`](api/air-quality.ts), [`.env.example`](.env.example) · `npm audit --omit=dev` |
+| **Efficiency** | Sub-1 MB repository footprint (`< 10 MB` CI budget), bounded TTL/LRU telemetry caching (`s-maxage`), parallel Open-Meteo + OpenAQ requests with `AbortSignal.timeout`, manual Vite vendor chunking (`react`, `icons`), and lazy-loaded WASM embeddings. | [`.github/workflows/ci.yml`](.github/workflows/ci.yml), [`vite.config.ts`](vite.config.ts), [`src/services/semanticPlaybook.ts`](src/services/semanticPlaybook.ts) · `npm run build` |
+| **Testing** | 17 test suites (`81` automated tests) with `@vitest/coverage-v8` thresholds covering CPCB NAQI, 24h windows, impact/ACH math, Family Alerts, API handlers (`/api/air-quality`, `/api/assistant`, `/api/health`), bounded cache, client services, `ErrorBoundary`, and UI/keyboard/`axe` accessibility regressions. | [`src/test/`](src/test/), [`vite.config.ts`](vite.config.ts) · `npm run test:coverage` |
+| **Accessibility** | WCAG 2.1 AA compliance enforced via `eslint-plugin-jsx-a11y` and `vitest-axe` (`0` violations): skip link, semantic landmarks, `role="alert"` error recovery, `aria-expanded`/`aria-controls` disclosures, `<svg role="img">` with `<title>`/`<desc>`, keyboard Tab/Enter/Escape/Arrow navigation, and `prefers-reduced-motion` support. | [`eslint.config.js`](eslint.config.js), [`src/components/RoomCleanChartSvg.tsx`](src/components/RoomCleanChartSvg.tsx), [`src/test/App.a11y.test.tsx`](src/test/App.a11y.test.tsx), [`src/test/App.keyboard.test.tsx`](src/test/App.keyboard.test.tsx) · `npm run lint` |
 | **Scientific Grounding** | Transparent India CPCB NAQI interpolation, real-time Open-Meteo & optional OpenAQ station telemetry, DEFRA/urban passenger CO₂ factors, and single-zone ACH particulate decay equations with non-medical disclaimers. | [`src/engine/cpcbAqi.ts`](src/engine/cpcbAqi.ts), [`src/engine/impactCalculator.ts`](src/engine/impactCalculator.ts), [`src/engine/roomCleanPhysics.ts`](src/engine/roomCleanPhysics.ts), [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 
 ---
@@ -136,7 +164,7 @@ Run all verification checks locally before pushing:
 ```bash
 npm run typecheck
 npm run lint
-npm test
+npm run test:coverage
 npm run build
 npm audit --omit=dev
 ```

@@ -1,7 +1,31 @@
-import { useRef, useState } from 'react';
-import { Cpu, ExternalLink, Search } from 'lucide-react';
+import { useId, useRef, useState } from 'react';
+import { ChevronDown, Cpu, ExternalLink, Search } from 'lucide-react';
 import { CURATED_PLAYBOOK } from '../data/presets';
 import { rankPlaybookByKeywords, rankPlaybookWithLocalHf, type RankedPlaybookTip } from '../services/semanticPlaybook';
+import type { PlaybookTip } from '../types/airQuality';
+
+function PlaybookTipDisclosure({ tip }: { tip: PlaybookTip }) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  return (
+    <div>
+      <button
+        type="button"
+        className="disclosure-trigger"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => setOpen((current) => !current)}
+      >
+        How to do it
+        <ChevronDown size={14} aria-hidden="true" className="details-arrow" />
+      </button>
+      <div id={panelId} hidden={!open}>
+        <p>{tip.steps}</p>
+        <p>{tip.impactMetric}</p>
+      </div>
+    </div>
+  );
+}
 
 export function PlaybookSearch() {
   const [query, setQuery] = useState('');
@@ -54,7 +78,7 @@ export function PlaybookSearch() {
               <div className="tip-meta"><span>{tip.category.replace('-', ' ')}</span>
                 {mode === 'hf-wasm' && <span>Match {Math.round(score * 100)}%</span>}</div>
               <h3>{tip.title}</h3><p>{tip.summary}</p>
-              <details><summary>How to do it</summary><p>{tip.steps}</p><p>{tip.impactMetric}</p></details>
+              <PlaybookTipDisclosure tip={tip} />
               <a href={tip.sourceUrl} target="_blank" rel="noopener noreferrer">{tip.sourceLabel}<ExternalLink size={13} aria-hidden="true" /></a>
             </article>
           ))}

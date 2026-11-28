@@ -1,7 +1,7 @@
 import { analyzeCleanAirWindows } from '../engine/cleanAirWindow';
-import { readOpenMeteoForecast, type OpenMeteoAirData } from '../engine/openMeteoForecast';
 import { buildDeterministicPlan } from '../engine/deterministicFallback';
 import { COMMUTE_LABELS } from '../engine/impactCalculator';
+import { readOpenMeteoForecast } from '../engine/openMeteoForecast';
 import type {
   AirQualityPayload,
   AssistantPlan,
@@ -9,6 +9,13 @@ import type {
   HouseholdProfile,
   LocationOption
 } from '../types/airQuality';
+import {
+  isAirQualityPayload,
+  isAssistantPlan,
+  parseApiSearchResults,
+  parseOpenMeteoAirData,
+  parseOpenMeteoGeoResults
+} from './airQualitySchemas';
 
 async function fetchOpenMeteoDirect(loc: LocationOption): Promise<AirQualityPayload> {
   const omUrl =
@@ -21,7 +28,8 @@ async function fetchOpenMeteoDirect(loc: LocationOption): Promise<AirQualityPayl
   const res = await fetch(omUrl);
   if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`);
 
-  const { current, hourly, cpcb } = readOpenMeteoForecast(await res.json() as OpenMeteoAirData);
+  const omData = parseOpenMeteoAirData(await res.json());
+  const { current, hourly, cpcb } = readOpenMeteoForecast(omData);
 
   return {
     location: loc,
@@ -42,8 +50,8 @@ export async function searchLocations(query: string): Promise<LocationOption[]> 
   try {
     const res = await fetch(`/api/air-quality?q=${encodeURIComponent(clean)}`);
     if (res.ok) {
-      const data = (await res.json()) as { results?: LocationOption[] };
-      return data.results ?? [];
+      const results = parseApiSearchResults(await res.json());
+      if (results !== null) return results;
     }
   } catch {
     // Fall back to direct Open-Meteo Geocoding when running pure `vite dev`
@@ -53,16 +61,7 @@ export async function searchLocations(query: string): Promise<LocationOption[]> 
     `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(clean)}&count=6&language=en&format=json`
   );
   if (!direct.ok) return [];
-  const geo = (await direct.json()) as {
-    results?: Array<{ name: string; admin1?: string; country?: string; latitude: number; longitude: number }>;
-  };
-  return (geo.results ?? []).map((item) => ({
-    name: item.name,
-    region: item.admin1 ?? '',
-    country: item.country ?? '',
-    lat: item.latitude,
-    lon: item.longitude
-  }));
+  return parseOpenMeteoGeoResults(await direct.json());
 }
 
 export async function fetchAirQuality(loc: LocationOption): Promise<AirQualityPayload> {
@@ -76,7 +75,8 @@ export async function fetchAirQuality(loc: LocationOption): Promise<AirQualityPa
     });
     const res = await fetch(`/api/air-quality?${params.toString()}`);
     if (res.ok) {
-      return (await res.json()) as AirQualityPayload;
+      const data: unknown = await res.json();
+      if (isAirQualityPayload(data)) return data;
     }
   } catch {
     // Fall back to direct Open-Meteo when running pure `vite dev` without Vercel CLI
@@ -135,7 +135,8 @@ export async function requestAssistantPlan(params: {
     });
 
     if (res.ok) {
-      return (await res.json()) as AssistantPlan;
+      const data: unknown = await res.json();
+      if (isAssistantPlan(data)) return data;
     }
   } catch {
     // Offline or pure `vite dev` fallback — never show a broken screen

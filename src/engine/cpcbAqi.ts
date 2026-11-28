@@ -150,8 +150,9 @@ export function calculateCpcbAqi(readings: PollutantReadings): CpcbAqiResult {
 
   let dominantPollutant: PollutantKey = 'pm25';
   let maxAqi = -1;
+  const pollutantOrder: readonly PollutantKey[] = ['pm25', 'pm10', 'no2', 'so2', 'o3', 'co'];
 
-  for (const key of Object.keys(subIndices) as PollutantKey[]) {
+  for (const key of pollutantOrder) {
     const score = subIndices[key];
     if (score > maxAqi) {
       maxAqi = score;

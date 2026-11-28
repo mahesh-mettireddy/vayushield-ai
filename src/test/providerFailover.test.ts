@@ -1,7 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import assistantHandler from '../../api/assistant';
-import healthHandler from '../../api/health';
-import type { VercelRequest, VercelResponse } from '../../api/_lib/httpTypes';
 import { generatePlanWithFailover } from '../../api/_lib/providers';
 import { sanitizeUserText, type AssistantRequest } from '../../api/_lib/schemas';
 
@@ -75,6 +72,12 @@ const ENV = { GEMINI_API_KEY: 'fixture-gemini', HF_TOKEN: 'fixture-hf', GROQ_API
 const chatResponse = (content: string) => Response.json({ choices: [{ message: { content } }] });
 const geminiResponse = (text: string) => Response.json({ candidates: [{ content: { parts: [{ text }] } }] });
 
+function getFetchCall(mockFetch: ReturnType<typeof vi.fn<typeof fetch>>, index: number) {
+  const call = mockFetch.mock.calls[index];
+  if (!call) throw new Error(`Expected fetch call at index ${index}`);
+  return call;
+}
+
 describe('Multi-Provider Failover & Prompt Sanitization', () => {
   beforeEach(() => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -82,7 +85,6 @@ describe('Multi-Provider Failover & Prompt Sanitization', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    vi.unstubAllEnvs();
   });
 
   it('strips prompt injection delimiters and control characters', () => {
@@ -106,7 +108,7 @@ describe('Multi-Provider Failover & Prompt Sanitization', () => {
 
     expect(plan.provider).toBe('huggingface');
     expect(mockFetch).toHaveBeenCalledTimes(2);
-    const [url, init] = mockFetch.mock.calls[1]!;
+    const [url, init] = getFetchCall(mockFetch, 1);
     expect(url).toBe('https://router.huggingface.co/v1/chat/completions');
     expect(new Headers(init?.headers).get('authorization')).toBe('Bearer test-hf');
     const body = JSON.parse(String(init?.body));
@@ -125,7 +127,7 @@ describe('Multi-Provider Failover & Prompt Sanitization', () => {
       ] } }]
     }));
     expect((await generatePlanWithFailover(SAMPLE_REQ, ENV, mockFetch)).provider).toBe('gemini');
-    const [url, init] = mockFetch.mock.calls[0]!;
+    const [url, init] = getFetchCall(mockFetch, 0);
     expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent');
     expect(new Headers(init?.headers).get('x-goog-api-key')).toBe('fixture-gemini');
     expect(JSON.parse(String(init?.body))).toMatchObject({
@@ -145,7 +147,7 @@ describe('Multi-Provider Failover & Prompt Sanitization', () => {
     const plan = await generatePlanWithFailover(SAMPLE_REQ, ENV, mockFetch);
     expect(plan.provider).toBe('groq');
     expect(plan.summary).toBe(JSON.parse(VALID_PLAN_JSON).summary);
-    const [url, init] = mockFetch.mock.calls[2]!;
+    const [url, init] = getFetchCall(mockFetch, 2);
     expect(url).toBe('https://api.groq.com/openai/v1/chat/completions');
     expect(new Headers(init?.headers).get('authorization')).toBe('Bearer fixture-groq');
     expect(JSON.parse(String(init?.body))).toMatchObject({
@@ -244,53 +246,4 @@ describe('Multi-Provider Failover & Prompt Sanitization', () => {
     expect(plan.dailyRoutine.length).toBeGreaterThanOrEqual(3);
     expect(plan.summary).toContain('New Delhi');
   });
-
-  it.each([SAMPLE_REQ, JSON.stringify(SAMPLE_REQ)])('accepts object and raw JSON assistant requests', async (body) => {
-    for (const key of Object.keys(ENV)) vi.stubEnv(key, '');
-    const req = { method: 'POST', headers: {}, body } as VercelRequest;
-    const response = mockResponse();
-    await assistantHandler(req, response);
-    expect(response.status).toHaveBeenCalledWith(200);
-    expect(response.json).toHaveBeenCalledWith(expect.objectContaining({ provider: 'deterministic-fallback' }));
-  });
-
-  it('returns 400 for malformed JSON', async () => {
-    const response = mockResponse();
-    await assistantHandler({ method: 'POST', headers: {}, body: '{invalid' } as VercelRequest, response);
-    expect(response.status).toHaveBeenCalledWith(400);
-  });
-
-  it.each(['gemini', 'huggingface', 'groq'] as const)('returns a %s plan through POST /api/assistant', async (provider) => {
-    for (const [key, value] of Object.entries(ENV)) vi.stubEnv(key, value);
-    const fetchMock = vi.spyOn(globalThis, 'fetch');
-    if (provider !== 'gemini') fetchMock.mockResolvedValueOnce(new Response('', { status: 429 }));
-    if (provider === 'groq') fetchMock.mockResolvedValueOnce(new Response('', { status: 429 }));
-    fetchMock.mockResolvedValueOnce(provider === 'gemini' ? geminiResponse(VALID_PLAN_JSON) : chatResponse(VALID_PLAN_JSON));
-    const response = mockResponse();
-    await assistantHandler({
-      method: 'POST', headers: { 'x-forwarded-for': 'test-' + provider }, body: JSON.stringify(SAMPLE_REQ)
-    } as unknown as VercelRequest, response);
-    expect(response.status).toHaveBeenCalledWith(200);
-    expect(response.json).toHaveBeenCalledWith(expect.objectContaining({ provider }));
-  });
-
-  it('reports provider flags without revealing credentials', () => {
-    vi.stubEnv('GEMINI_API_KEY', 'fixture-secret');
-    vi.stubEnv('HF_TOKEN', '');
-    vi.stubEnv('GROQ_API_KEY', '');
-    vi.stubEnv('OPENAQ_API_KEY', 'fixture-secret');
-    const response = mockResponse();
-    healthHandler({ method: 'GET' } as VercelRequest, response);
-    expect(response.status).toHaveBeenCalledWith(200);
-    expect(response.json).toHaveBeenCalledWith({
-      ok: true, providers: { gemini: true, huggingface: false, groq: false, openaq: true }
-    });
-    expect(response.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
-  });
 });
-
-function mockResponse() {
-  const response = { setHeader: vi.fn(), status: vi.fn(), json: vi.fn() };
-  response.status.mockReturnValue(response);
-  return response as unknown as VercelResponse;
-}

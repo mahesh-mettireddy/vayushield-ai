@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react';
+import { useId, useState, type CSSProperties } from 'react';
 import { ArrowUpRight, CalendarDays, ChevronDown, Leaf, Lightbulb, Sparkles } from 'lucide-react';
 import type { AssistantPlan, BudgetTier, HouseholdProfile } from '../types/airQuality';
 
@@ -26,6 +26,10 @@ interface RoutinePlannerProps {
 
 export function RoutinePlanner({ profile, plan, loading, ready, onProfileChange, onGenerate }: RoutinePlannerProps) {
   const [question, setQuestion] = useState('');
+  const [hacksOpen, setHacksOpen] = useState(false);
+  const [swapsOpen, setSwapsOpen] = useState(false);
+  const hacksPanelId = useId();
+  const swapsPanelId = useId();
 
   function toggleMember(member: string) {
     const householdMembers = profile.householdMembers.includes(member)
@@ -93,22 +97,40 @@ export function RoutinePlanner({ profile, plan, loading, ready, onProfileChange,
             </li>)}
           </ol>
           <div className="plan-disclosures items-start">
-            <details>
-              <summary><Lightbulb size={18} aria-hidden="true" /> Indoor air hacks <ChevronDown size={17} aria-hidden="true" className="details-arrow" /></summary>
-              <ul>
+            <div className="disclosure-card">
+              <button
+                type="button"
+                className="disclosure-trigger"
+                aria-expanded={hacksOpen}
+                aria-controls={hacksPanelId}
+                onClick={() => setHacksOpen((open) => !open)}
+              >
+                <Lightbulb size={18} aria-hidden="true" /> Indoor air hacks
+                <ChevronDown size={17} aria-hidden="true" className="details-arrow" />
+              </button>
+              <ul id={hacksPanelId} hidden={!hacksOpen}>
                 {plan.indoorHacks.map((hack, i) => <li key={hack.title + i}>
                   <h4>{hack.title}</h4><p>{hack.steps}</p><p className="muted">{formatCostTier(hack.costTier)} · {hack.impact}</p>
                 </li>)}
               </ul>
-            </details>
-            <details>
-              <summary><Leaf size={18} aria-hidden="true" /> Sustainable swaps <ChevronDown size={17} aria-hidden="true" className="details-arrow" /></summary>
-              <ul>
+            </div>
+            <div className="disclosure-card">
+              <button
+                type="button"
+                className="disclosure-trigger"
+                aria-expanded={swapsOpen}
+                aria-controls={swapsPanelId}
+                onClick={() => setSwapsOpen((open) => !open)}
+              >
+                <Leaf size={18} aria-hidden="true" /> Sustainable swaps
+                <ChevronDown size={17} aria-hidden="true" className="details-arrow" />
+              </button>
+              <ul id={swapsPanelId} hidden={!swapsOpen}>
                 {plan.sustainableSwaps.map((swap, i) => <li key={swap.swap + i}>
                   <h4>{swap.swap}</h4><p>{swap.directImpact}</p>
                 </li>)}
               </ul>
-            </details>
+            </div>
           </div>
           <p className="safety-note">{plan.safetyNote}</p>
         </div>

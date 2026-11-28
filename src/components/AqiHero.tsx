@@ -1,5 +1,5 @@
 import { ChevronDown, Copy, FlaskConical, MapPin } from 'lucide-react';
-import { useState, type CSSProperties } from 'react';
+import { useId, useState, type CSSProperties } from 'react';
 import { POLLUTANT_LABELS } from '../engine/cpcbAqi';
 import { formatCommunityAlert } from '../engine/communityAlert';
 import type { AirQualityPayload, ChoiceImpactResult, PollutantKey } from '../types/airQuality';
@@ -16,6 +16,8 @@ const PARTICLES = Array.from({ length: 20 }, (_, i) => ({
 
 export function AqiHero({ air, impact }: { air: AirQualityPayload; impact: ChoiceImpactResult }) {
   const [copyFeedback, setCopyFeedback] = useState<{ text: string; copied: boolean } | null>(null);
+  const [sensorOpen, setSensorOpen] = useState(false);
+  const sensorPanelId = useId();
   const { location, cpcb, current, groundStation } = air;
   const dominant = POLLUTANT_LABELS[cpcb.dominantPollutant];
   const band = cpcb.category.toLowerCase().replace(' ', '-');
@@ -79,10 +81,18 @@ export function AqiHero({ air, impact }: { air: AirQualityPayload; impact: Choic
           hourly={air.hourly} analysis={air.windowAnalysis} />
       </div>
 
-      <details className="sensor-details">
-        <summary><FlaskConical size={17} aria-hidden="true" /> 6 Pollutants &amp; Sensor Details
-          <ChevronDown className="details-arrow" size={16} aria-hidden="true" /></summary>
-        <div className="sensor-content">
+      <div className="sensor-details">
+        <button
+          type="button"
+          className="disclosure-trigger"
+          aria-expanded={sensorOpen}
+          aria-controls={sensorPanelId}
+          onClick={() => setSensorOpen((open) => !open)}
+        >
+          <FlaskConical size={17} aria-hidden="true" /> 6 Pollutants &amp; Sensor Details
+          <ChevronDown className="details-arrow" size={16} aria-hidden="true" />
+        </button>
+        <div id={sensorPanelId} className="sensor-content" hidden={!sensorOpen}>
           <dl className="pollutants">
             {POLLUTANTS.map((key) => (
               <div key={key}><dt>{POLLUTANT_LABELS[key].name}</dt>
@@ -96,7 +106,7 @@ export function AqiHero({ air, impact }: { air: AirQualityPayload; impact: Choic
             {groundStation.distanceKm !== null && ' · ' + groundStation.distanceKm + ' km away'}
           </p>}
         </div>
-      </details>
+      </div>
     </section>
   );
 }

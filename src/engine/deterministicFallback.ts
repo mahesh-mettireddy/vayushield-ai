@@ -1,4 +1,4 @@
-import type { AssistantPlan, PollutantKey } from '../types/airQuality.js';
+import type { AssistantPlan } from '../types/airQuality.js';
 import { POLLUTANT_LABELS } from './cpcbAqi.js';
 import { getPeakWindowAdvice } from './cleanAirWindow.js';
 
@@ -26,9 +26,8 @@ export function buildDeterministicPlan(input: DeterministicPlanInput): Assistant
     ['Children', 'Seniors', 'Asthma / Respiratory'].includes(m)
   );
 
-  const dominant = Object.hasOwn(POLLUTANT_LABELS, input.dominantPollutant)
-    ? POLLUTANT_LABELS[input.dominantPollutant as PollutantKey].name
-    : 'Unavailable';
+  const dominantEntry = Object.entries(POLLUTANT_LABELS).find(([key]) => key === input.dominantPollutant);
+  const dominant = dominantEntry ? dominantEntry[1].name : 'Unavailable';
   const summary = `In ${input.city}, CPCB NAQI is ${input.aqi} (${input.category}). Dominant pollutant: ${dominant}. Current PM2.5: ${input.pm25.toFixed(1)} µg/m³. Your active choices are estimated to reduce daily PM2.5 exposure by ${input.exposureReductionPct}% and save ${input.annualCo2SavedKg} kg CO₂ per year.`;
 
   const dailyRoutine = [

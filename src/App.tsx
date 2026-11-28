@@ -34,8 +34,16 @@ const TABS = [
   { id: 'playbook', label: 'Playbook & Local HF', icon: BookOpen }
 ] as const;
 
+const DEFAULT_CITY: LocationOption = PRESET_CITIES[0] ?? {
+  name: 'New Delhi',
+  region: 'Delhi NCR',
+  country: 'India',
+  lat: 28.6139,
+  lon: 77.209
+};
+
 export default function App() {
-  const [selected, setSelected] = useState<LocationOption>(PRESET_CITIES[0]!);
+  const [selected, setSelected] = useState<LocationOption>(DEFAULT_CITY);
   const [refresh, setRefresh] = useState(0);
   const [air, setAir] = useState<AirQualityPayload | null>(null);
   const [airLoading, setAirLoading] = useState(true);

@@ -12,7 +12,7 @@ interface OpenMeteoPollutants<T> {
 
 export interface OpenMeteoAirData {
   timezone: string;
-  current?: OpenMeteoPollutants<number>;
+  current?: OpenMeteoPollutants<number | null>;
   hourly?: OpenMeteoPollutants<Array<number | null>> & { time: number[] };
 }
 

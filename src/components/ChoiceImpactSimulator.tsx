@@ -1,5 +1,5 @@
-import { Building2, Trees } from 'lucide-react';
-import { useState, type CSSProperties } from 'react';
+import { Building2, ChevronDown, Trees } from 'lucide-react';
+import { useId, useState, type CSSProperties } from 'react';
 import { calculateChoiceImpact, calculateCommunityImpact, COMMUTE_LABELS } from '../engine/impactCalculator';
 import type { ChoiceImpactResult, ChoiceToggles, CommuteMode, HouseholdProfile } from '../types/airQuality';
 import { RoomCleanCurve } from './RoomCleanCurve';
@@ -12,13 +12,17 @@ const HABITS: Array<{ key: keyof ChoiceToggles; label: string }> = [
   { key: 'publicTransitOrWfhSwap', label: 'Use a lower-emission commute' },
   { key: 'zeroSmokeIndoor', label: 'Zero-Smoke Home — No Incense / Coils' }
 ];
-const MODES = Object.keys(COMMUTE_LABELS) as CommuteMode[];
+const COMMUTE_MODES: readonly CommuteMode[] = ['solo_car', 'scooter', 'bus', 'metro', 'cycle_walk', 'wfh'];
 const COMMUNITY_PRESETS = [
   { count: 1, label: '1 Family' },
   { count: 25, label: '25 Flats' },
   { count: 100, label: '100 Flats' }
 ];
 const tonnesFormat = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 3 });
+
+function parseCommuteMode(value: string): CommuteMode | undefined {
+  return COMMUTE_MODES.find((mode) => mode === value);
+}
 
 interface SimulatorProps {
   profile: HouseholdProfile;
@@ -32,6 +36,12 @@ interface SimulatorProps {
 
 export function ChoiceImpactSimulator({ profile, toggles, impact, ambientPm25 = 120, hasTelemetry, onProfileChange, onToggleChange }: SimulatorProps) {
   const [households, setHouseholds] = useState(1);
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
+  const breakdownId = useId();
+  const baselineSelectId = useId();
+  const chosenSelectId = useId();
+  const commuteKmId = useId();
+
   const community = calculateCommunityImpact(impact.annualCo2SavedKg, households);
   const exposure = [
     { name: 'Before', value: impact.baselineDailyExposureUgM3, width: 100 },
@@ -41,6 +51,7 @@ export function ChoiceImpactSimulator({ profile, toggles, impact, ambientPm25 = 
     ...toggles, publicTransitOrWfhSwap: true, cleanCookingExhaust: true
   }).annualCo2SavedKg;
   const savingsShare = Math.min(100, Math.round(impact.annualCo2SavedKg / maximumSavings * 100));
+
   return (
     <div>
       <div className="panel-heading">
@@ -93,22 +104,30 @@ export function ChoiceImpactSimulator({ profile, toggles, impact, ambientPm25 = 
       <fieldset className="commute-group">
         <legend>Commute comparison</legend>
         <div className="commute-fields">
-          <label>Usual commute
-            <select value={profile.baselineCommute} onChange={(event) =>
-              onProfileChange({ ...profile, baselineCommute: event.target.value as CommuteMode })}>
-              {MODES.map((mode) => <option key={mode} value={mode}>{COMMUTE_LABELS[mode]}</option>)}
+          <div>
+            <label htmlFor={baselineSelectId}>Usual commute</label>
+            <select id={baselineSelectId} value={profile.baselineCommute} onChange={(event) => {
+              const mode = parseCommuteMode(event.target.value);
+              if (mode) onProfileChange({ ...profile, baselineCommute: mode });
+            }}>
+              {COMMUTE_MODES.map((mode) => <option key={mode} value={mode}>{COMMUTE_LABELS[mode]}</option>)}
             </select>
-          </label>
-          <label>Alternative commute
-            <select value={profile.chosenCommute} onChange={(event) =>
-              onProfileChange({ ...profile, chosenCommute: event.target.value as CommuteMode })}>
-              {MODES.map((mode) => <option key={mode} value={mode}>{COMMUTE_LABELS[mode]}</option>)}
+          </div>
+          <div>
+            <label htmlFor={chosenSelectId}>Alternative commute</label>
+            <select id={chosenSelectId} value={profile.chosenCommute} onChange={(event) => {
+              const mode = parseCommuteMode(event.target.value);
+              if (mode) onProfileChange({ ...profile, chosenCommute: mode });
+            }}>
+              {COMMUTE_MODES.map((mode) => <option key={mode} value={mode}>{COMMUTE_LABELS[mode]}</option>)}
             </select>
-          </label>
-          <label>Round trip <strong>{profile.commuteKm} km</strong>
-            <input type="range" min={0} max={60} step={2} value={profile.commuteKm}
+          </div>
+          <div>
+            <label htmlFor={commuteKmId}>Round trip <strong>{profile.commuteKm} km</strong></label>
+            <input id={commuteKmId} type="range" min={0} max={60} step={2} value={profile.commuteKm}
+              aria-valuetext={`${profile.commuteKm} km`}
               onChange={(event) => onProfileChange({ ...profile, commuteKm: Number(event.target.value) })} />
-          </label>
+          </div>
         </div>
       </fieldset>
 
@@ -137,10 +156,23 @@ export function ChoiceImpactSimulator({ profile, toggles, impact, ambientPm25 = 
 
       <RoomCleanCurve ambientPm25={ambientPm25} hasTelemetry={hasTelemetry} />
 
-      {impact.breakdown.length > 0 && <details className="impact-breakdown">
-        <summary>How the estimates are calculated</summary>
-        <ul>{impact.breakdown.map((item) => <li key={item.label}><strong>{item.label}</strong><p>{item.detail}</p></li>)}</ul>
-      </details>}
+      {impact.breakdown.length > 0 && (
+        <div className="impact-breakdown">
+          <button
+            type="button"
+            className="disclosure-trigger"
+            aria-expanded={breakdownOpen}
+            aria-controls={breakdownId}
+            onClick={() => setBreakdownOpen((open) => !open)}
+          >
+            How the estimates are calculated
+            <ChevronDown size={16} aria-hidden="true" className="details-arrow" />
+          </button>
+          <ul id={breakdownId} hidden={!breakdownOpen}>
+            {impact.breakdown.map((item) => <li key={item.label}><strong>{item.label}</strong><p>{item.detail}</p></li>)}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

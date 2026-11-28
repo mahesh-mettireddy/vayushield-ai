@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { BoundedTtlCache } from './boundedCache.js';
+import type { VercelRequest } from './httpTypes.js';
 
 /** Strips control characters and prompt-injection delimiters from user-supplied text. */
 export function sanitizeUserText(raw: string, maxLength: number): string {
@@ -11,6 +13,47 @@ export function sanitizeUserText(raw: string, maxLength: number): string {
     .trim()
     .slice(0, maxLength);
 }
+
+function readHeaderValue(header: string | string[] | undefined): string {
+  if (Array.isArray(header)) return header[0]?.split(',')[0]?.trim() ?? '';
+  return header?.split(',')[0]?.trim() ?? '';
+}
+
+/**
+ * Extracts a bounded client IP key, preferring trusted Vercel/reverse-proxy headers
+ * before falling back to x-forwarded-for or the socket address.
+ */
+export function extractClientIp(req: Pick<VercelRequest, 'headers' | 'socket'>): string {
+  const candidates = [
+    readHeaderValue(req.headers['x-vercel-forwarded-for']),
+    readHeaderValue(req.headers['x-real-ip']),
+    readHeaderValue(req.headers['x-forwarded-for']),
+    req.socket?.remoteAddress?.trim() ?? ''
+  ];
+  const resolved = candidates.find((candidate) => candidate.length > 0) ?? 'unknown';
+  return resolved.slice(0, 64);
+}
+
+export const OpenMeteoAirDataSchema = z.object({
+  timezone: z.string().min(1),
+  current: z.object({
+    pm2_5: z.number().nullable().optional(),
+    pm10: z.number().nullable().optional(),
+    nitrogen_dioxide: z.number().nullable().optional(),
+    sulphur_dioxide: z.number().nullable().optional(),
+    ozone: z.number().nullable().optional(),
+    carbon_monoxide: z.number().nullable().optional()
+  }).optional(),
+  hourly: z.object({
+    time: z.array(z.number()),
+    pm2_5: z.array(z.number().nullable()).optional(),
+    pm10: z.array(z.number().nullable()).optional(),
+    nitrogen_dioxide: z.array(z.number().nullable()).optional(),
+    sulphur_dioxide: z.array(z.number().nullable()).optional(),
+    ozone: z.array(z.number().nullable()).optional(),
+    carbon_monoxide: z.array(z.number().nullable()).optional()
+  }).optional()
+});
 
 export const AirQualityQuerySchema = z.union([
   z.object({
@@ -54,12 +97,15 @@ export const AssistantRequestSchema = z.object({
 
 export type AssistantRequest = z.infer<typeof AssistantRequestSchema>;
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function normalizeKeys(value: unknown, aliases: Record<string, string>): unknown {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
-  const input = value as Record<string, unknown>;
-  const output = { ...input };
+  if (!isPlainRecord(value)) return value;
+  const output: Record<string, unknown> = { ...value };
   for (const [alias, canonical] of Object.entries(aliases)) {
-    if (Object.hasOwn(input, alias)) output[canonical] ??= input[alias];
+    if (Object.hasOwn(value, alias)) output[canonical] ??= value[alias];
   }
   return output;
 }
@@ -92,33 +138,37 @@ export const AssistantPlanOutputSchema = z.preprocess(
   })
 );
 
-interface RateEntry {
-  count: number;
-  resetAt: number;
-}
+const RATE_LIMIT_MAX_KEYS = 500;
+const rateLimitMap = new BoundedTtlCache<number>(RATE_LIMIT_MAX_KEYS);
 
-const rateBuckets = new Map<string, RateEntry>();
+export function resetRateLimitCache(): void {
+  rateLimitMap.clear();
+}
 
 export function checkRateLimit(
   clientKey: string,
   limit = 20,
   windowMs = 5 * 60 * 1000
 ): { allowed: boolean; retryAfterSec: number } {
-  const now = Date.now();
-  const existing = rateBuckets.get(clientKey);
+  if (limit <= 0) {
+    return { allowed: false, retryAfterSec: Math.max(1, Math.ceil(windowMs / 1000)) };
+  }
 
-  if (!existing || now >= existing.resetAt) {
-    rateBuckets.set(clientKey, { count: 1, resetAt: now + windowMs });
+  const now = Date.now();
+  const existing = rateLimitMap.getEntry(clientKey);
+
+  if (!existing || now >= existing.expiresAt) {
+    rateLimitMap.set(clientKey, 1, now + windowMs);
     return { allowed: true, retryAfterSec: 0 };
   }
 
-  if (existing.count >= limit) {
+  if (existing.value >= limit) {
     return {
       allowed: false,
-      retryAfterSec: Math.max(1, Math.ceil((existing.resetAt - now) / 1000))
+      retryAfterSec: Math.max(1, Math.ceil((existing.expiresAt - now) / 1000))
     };
   }
 
-  existing.count += 1;
+  rateLimitMap.set(clientKey, existing.value + 1, existing.expiresAt);
   return { allowed: true, retryAfterSec: 0 };
 }
