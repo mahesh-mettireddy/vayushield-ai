@@ -28,7 +28,9 @@ describe('Choice-Impact Simulator Engine', () => {
     expect(result.exposureReductionPct).toBe(85);
     expect(result.projectedDailyExposureUgM3).toBe(23.4);
     expect(result.breakdown).toHaveLength(6);
-    expect(result.breakdown.find((item) => item.label.startsWith('Zero-Smoke'))?.exposureDeltaPct).toBe(15);
+    expect(
+      result.breakdown.find((item) => item.label.startsWith('Zero-Smoke'))?.exposureDeltaPct
+    ).toBe(15);
   });
 
   it('returns zero reduction when all toggles are off', () => {
@@ -46,6 +48,25 @@ describe('Choice-Impact Simulator Engine', () => {
     expect(result.annualCo2SavedKg).toBe(0);
     expect(result.breakdown).toHaveLength(0);
   });
+
+  it('sanitizes non-finite inputs, clamps commuteKm, and omits commute savings when alternative emits more', () => {
+    const result = calculateChoiceImpact(
+      Number.NaN,
+      { ...BASE_PROFILE, baselineCommute: 'wfh', chosenCommute: 'solo_car', commuteKm: 500 },
+      {
+        hepaOrCorsiRosenthal: false,
+        smartVentilation: false,
+        cleanCookingExhaust: false,
+        n95OutdoorMask: false,
+        publicTransitOrWfhSwap: true,
+        zeroSmokeIndoor: false
+      }
+    );
+    expect(result.baselineDailyExposureUgM3).toBe(39);
+    expect(result.annualCo2SavedKg).toBe(0);
+    expect(result.exposureReductionPct).toBe(0);
+    expect(result.breakdown).toHaveLength(0);
+  });
 });
 
 describe('Community impact', () => {
@@ -61,14 +82,20 @@ describe('Community impact', () => {
 
   it('keeps zero and fractional savings and uses whole households', () => {
     expect(calculateCommunityImpact(0, 200)).toEqual({
-      households: 200, annualCo2Tonnes: 0, annualCo2Kg: 0, treesEquivalent: 0
+      households: 200,
+      annualCo2Tonnes: 0,
+      annualCo2Kg: 0,
+      treesEquivalent: 0
     });
     expect(calculateCommunityImpact(12.5, 5.9).annualCo2Kg).toBe(62.5);
   });
 
   it('uses the one-household minimum and ignores invalid savings', () => {
     expect(calculateCommunityImpact(-4, 0)).toEqual({
-      households: 1, annualCo2Tonnes: 0, annualCo2Kg: 0, treesEquivalent: 0
+      households: 1,
+      annualCo2Tonnes: 0,
+      annualCo2Kg: 0,
+      treesEquivalent: 0
     });
     expect(calculateCommunityImpact(Number.NaN, Number.POSITIVE_INFINITY).households).toBe(1);
   });

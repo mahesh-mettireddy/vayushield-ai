@@ -25,10 +25,10 @@ export default defineConfig({
       include: ['src/**/*.{ts,tsx}', 'api/**/*.ts'],
       exclude: ['src/test/**', 'src/main.tsx', 'src/types/**', 'api/_lib/httpTypes.ts'],
       thresholds: {
-        statements: 85,
-        lines: 85,
-        functions: 85,
-        branches: 80
+        statements: 90,
+        branches: 90,
+        functions: 90,
+        lines: 90
       }
     }
   }

@@ -13,7 +13,10 @@ const air = {
   }
 };
 const impact = {
-  exposureReductionPct: 40, baselineDailyExposureUgM3: 50, projectedDailyExposureUgM3: 30, dailyCo2SavedKg: 2.98
+  exposureReductionPct: 40,
+  baselineDailyExposureUgM3: 50,
+  projectedDailyExposureUgM3: 30,
+  dailyCo2SavedKg: 2.98
 };
 
 describe('Family alert', () => {
@@ -28,14 +31,21 @@ describe('Family alert', () => {
   });
 
   it('prints unavailable forecasts clearly and does not flag a low peak for avoidance', () => {
-    const text = formatCommunityAlert({
-      ...air,
-      windowAnalysis: {
-        ...air.windowAnalysis,
-        bestWindow: { ...air.windowAnalysis.bestWindow, startLabel: 'Unavailable', endLabel: 'Unavailable' },
-        worstWindow: { ...air.windowAnalysis.worstWindow, avgAqi: 75 }
-      }
-    }, impact);
+    const text = formatCommunityAlert(
+      {
+        ...air,
+        windowAnalysis: {
+          ...air.windowAnalysis,
+          bestWindow: {
+            ...air.windowAnalysis.bestWindow,
+            startLabel: 'Unavailable',
+            endLabel: 'Unavailable'
+          },
+          worstWindow: { ...air.windowAnalysis.worstWindow, avgAqi: 75 }
+        }
+      },
+      impact
+    );
     expect(text).toContain('Cleanest 2-hour window: Unavailable\n');
     expect(text).toContain('Peak 2-hour window: 4 PM – 6 PM (NAQI 75)');
   });

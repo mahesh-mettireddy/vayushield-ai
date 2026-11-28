@@ -1,12 +1,6 @@
 export type PollutantKey = 'pm25' | 'pm10' | 'no2' | 'so2' | 'o3' | 'co';
 
-export type AqiCategory =
-  | 'Good'
-  | 'Satisfactory'
-  | 'Moderate'
-  | 'Poor'
-  | 'Very Poor'
-  | 'Severe';
+export type AqiCategory = 'Good' | 'Satisfactory' | 'Moderate' | 'Poor' | 'Very Poor' | 'Severe';
 
 export interface PollutantReadings {
   pm25: number;
@@ -24,8 +18,6 @@ export interface CpcbAqiResult {
   dominantPollutant: PollutantKey;
   subIndices: Record<PollutantKey, number>;
   advisory: string;
-  badgeClass: string;
-  accentHex: string;
 }
 
 export interface HourlyAirPoint {

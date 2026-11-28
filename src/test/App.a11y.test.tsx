@@ -15,9 +15,7 @@ const MOCK_AIR_PAYLOAD: AirQualityPayload = {
     category: 'Very Poor',
     dominantPollutant: 'pm25',
     subIndices: { pm25: 335, pm10: 221, no2: 66, so2: 18, o3: 48, co: 56 },
-    advisory: 'Respiratory illness risk on prolonged exposure.',
-    badgeClass: 'bg-red-100 text-red-950 border-red-300',
-    accentHex: '#dc2626'
+    advisory: 'Respiratory illness risk on prolonged exposure.'
   },
   hourly: [
     { time: '2026-11-24T12:00', hourLabel: '12 PM', pm25: 140, pm10: 220, aqi: 316 },
@@ -26,8 +24,20 @@ const MOCK_AIR_PAYLOAD: AirQualityPayload = {
     { time: '2026-11-24T15:00', hourLabel: '3 PM', pm25: 190, pm10: 295, aqi: 354 }
   ],
   windowAnalysis: {
-    bestWindow: { startLabel: '1 PM', endLabel: '3 PM', avgPm25: 90, avgAqi: 201, advice: 'Lowest smog trough of the next 24h.' },
-    worstWindow: { startLabel: '2 PM', endLabel: '4 PM', avgPm25: 137.5, avgAqi: 269, advice: 'Keep windows closed during the peak.' },
+    bestWindow: {
+      startLabel: '1 PM',
+      endLabel: '3 PM',
+      avgPm25: 90,
+      avgAqi: 201,
+      advice: 'Lowest smog trough of the next 24h.'
+    },
+    worstWindow: {
+      startLabel: '2 PM',
+      endLabel: '4 PM',
+      avgPm25: 137.5,
+      avgAqi: 269,
+      advice: 'Keep windows closed during the peak.'
+    },
     exposureSavingsPct: 35
   },
   groundStation: null
@@ -66,7 +76,9 @@ describe('App Integration & WCAG Accessibility', () => {
     const clipboard = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
     await user.click(screen.getByRole('button', { name: 'Copy Family Alert' }));
     expect(await screen.findByText('Copied!')).toHaveAttribute('aria-live', 'polite');
-    expect(clipboard).toHaveBeenCalledWith(expect.stringContaining('CPCB NAQI: 335/500 (Very Poor)'));
+    expect(clipboard).toHaveBeenCalledWith(
+      expect.stringContaining('CPCB NAQI: 335/500 (Very Poor)')
+    );
     const chart = screen.getByRole('group', { name: 'Hourly NAQI chart' });
     const bars = within(chart).getAllByRole('button');
     const readout = screen.getByRole('status', { name: 'Selected forecast hour' });
@@ -80,7 +92,9 @@ describe('App Integration & WCAG Accessibility', () => {
     expect(readout).toHaveTextContent('NAQI 184');
     await user.unhover(bar2);
     expect(readout).toHaveTextContent('12 PM');
-    act(() => { bar0.focus(); });
+    act(() => {
+      bar0.focus();
+    });
     await user.keyboard('{ArrowRight}');
     expect(bar1).toHaveFocus();
     expect(bar1).toHaveAttribute('aria-pressed', 'true');
@@ -92,7 +106,11 @@ describe('App Integration & WCAG Accessibility', () => {
 
     const tablist = screen.getByRole('tablist', { name: 'Air quality tools' });
     const tabs = within(tablist).getAllByRole('tab');
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['AI Daily Plan', 'Impact Lab', 'Playbook & Local HF']);
+    expect(tabs.map((tab) => tab.textContent)).toEqual([
+      'AI Daily Plan',
+      'Impact Lab',
+      'Playbook & Local HF'
+    ]);
     const planTab = requireElement(tabs[0], 'plan tab');
     const impactTab = requireElement(tabs[1], 'impact tab');
     const playbookTab = requireElement(tabs[2], 'playbook tab');
@@ -109,7 +127,9 @@ describe('App Integration & WCAG Accessibility', () => {
     };
     await checkAccessibility();
 
-    act(() => { planTab.focus(); });
+    act(() => {
+      planTab.focus();
+    });
     await user.keyboard('{ArrowRight}');
     expect(impactTab).toHaveFocus();
     const impact = screen.getByRole('tabpanel', { name: 'Impact Lab' });
@@ -124,27 +144,40 @@ describe('App Integration & WCAG Accessibility', () => {
     expect(householdSlider).toHaveAttribute('aria-valuetext', '200 households');
     await checkAccessibility();
 
-    act(() => { impactTab.focus(); });
+    act(() => {
+      impactTab.focus();
+    });
     await user.keyboard('{End}');
     expect(playbookTab).toHaveFocus();
     await user.type(screen.getByRole('searchbox', { name: 'Search the playbook' }), 'quasar');
-    expect(within(screen.getByRole('tabpanel', { name: 'Playbook & Local HF' })).getByRole('status'))
-      .toHaveTextContent('No exact keyword matches');
+    expect(
+      within(screen.getByRole('tabpanel', { name: 'Playbook & Local HF' })).getByRole('status')
+    ).toHaveTextContent('No exact keyword matches');
     await checkAccessibility();
-    act(() => { playbookTab.focus(); });
+    act(() => {
+      playbookTab.focus();
+    });
     await user.keyboard('{ArrowRight}');
     expect(planTab).toHaveFocus();
   });
 
   it('offers a labeled manual copy field when clipboard access is denied', async () => {
     const user = userEvent.setup();
-    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('Clipboard access denied'));
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(
+      new Error('Clipboard access denied')
+    );
     const { container } = render(<App />);
     await user.click(await screen.findByRole('button', { name: 'Copy Family Alert' }));
-    expect(await screen.findByText('Select and copy the alert text below.')).toHaveAttribute('aria-live', 'polite');
+    expect(await screen.findByText('Select and copy the alert text below.')).toHaveAttribute(
+      'aria-live',
+      'polite'
+    );
     const field = screen.getByRole('textbox', { name: 'Family alert text' });
     expect(field).toHaveProperty('readOnly', true);
     if (!(field instanceof HTMLTextAreaElement)) throw new Error('Expected textarea');
+    const selectSpy = vi.spyOn(field, 'select');
+    fireEvent.focus(field);
+    expect(selectSpy).toHaveBeenCalledTimes(1);
     expect(field.value).toContain('VayuShield AI family alert — New Delhi');
     const results = await axe(container, { rules: { 'color-contrast': { enabled: false } } });
     expect(results.violations).toEqual([]);

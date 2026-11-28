@@ -1,31 +1,34 @@
 # VayuShield AI architecture
 
-VayuShield AI uses React, Vite, TypeScript, and Tailwind CSS for the frontend. Vercel Functions serve the API routes under `/api/`.
+VayuShield AI uses React 19, Vite, TypeScript, and Tailwind CSS for the frontend, wrapped in a top-level [`ErrorBoundary`](../src/components/ErrorBoundary.tsx). Vercel Node 22 ESM Functions serve the API routes under [`api/`](../api/).
 
 ---
 
 ## 1. System Architecture
 
 ```text
-Browser (React 19 + Vite + TypeScript + Tailwind CSS)
-  ├── LocationSearch (Open-Meteo Geocoding via /api/air-quality?q=... or city presets)
-  ├── AqiHero & PollutantGrid (CPCB NAQI Engine -> 0-500 score, 6 bands, dominant pollutant)
-  ├── CleanAirWindowChart (24-hour NAQI forecast -> lowest and highest two-hour averages)
-  ├── ChoiceImpactSimulator (Deterministic PM2.5 exposure & CO2 savings calculator)
-  ├── RoutinePlanner (Calls POST /api/assistant -> structured JSON routine + hacks + impact)
-  └── IndoorPlaybookSearch (Keyword + optional lazy-loaded @huggingface/transformers WASM embeddings)
+Browser (React 19 + Vite + TypeScript + Tailwind CSS, wrapped in ErrorBoundary)
+  ├── LocationBar (Open-Meteo Geocoding via /api/air-quality?q=... or city presets + geolocation)
+  ├── AqiHero (CPCB NAQI SVG radial gauge 0–500, 6 bands, dominant pollutant, Family Alert, sensor disclosure)
+  ├── CleanAirWindowCard (24-hour NAQI bar chart -> lowest and highest two-hour averages)
+  ├── RoutinePlanner (Calls POST /api/assistant -> structured JSON routine + indoor hacks + sustainable swaps)
+  ├── ChoiceImpactSimulator (Deterministic PM2.5 exposure, CO2 savings, Community Scale, RoomCleanCurve)
+  │     └── RoomCleanCurve -> RoomCleanChartSvg + roomCleanChartGeometry (0–120m bedroom ACH decay SVG)
+  └── PlaybookSearch (Keyword + optional lazy-loaded @huggingface/transformers WASM embeddings)
           │
           ▼ HTTPS (Same-origin, zero CORS issues on Vercel)
 Vercel Serverless Functions (/api/*)
-  ├── GET  /api/air-quality?lat=&lon=&city=
-  │     ├── Open-Meteo Air Quality API (hourly PM2.5, PM10, NO2, SO2, O3, CO; timezone=auto)
-  │     ├── Optional OpenAQ v3 overlay (if OPENAQ_API_KEY env var is present)
-  │     └── Cache expires after 15 minutes or when the first forecast hour begins
-  ├── GET  /api/health (service status and provider configuration flags)
+  ├── GET  /api/air-quality?lat=&lon=&city= | ?q=
+  │     ├── Bounded IP rate limit (60 req / 5 min) + Zod query & upstream validation
+  │     ├── Open-Meteo Air Quality & Geocoding API (hourly PM2.5, PM10, NO2, SO2, O3, CO; timezone=auto)
+  │     ├── Optional OpenAQ v3 /locations provenance overlay (if OPENAQ_API_KEY env var is present)
+  │     └── BoundedTtlCache (max 500 entries; expires after 15 minutes or first forecast hour)
+  ├── GET  /api/health (service status and boolean provider configuration flags, no-store)
   └── POST /api/assistant
-        ├── Zod request validation + prompt-injection sanitization + IP rate limiter
-        ├── Failover Chain (strict descending capability):
-        │     1. Gemini 2.5 Flash (GEMINI_API_KEY)
+        ├── 16 KB pre-parse body cap (413) + bounded IP rate limiter (20 req / 5 min, 429 + Retry-After)
+        ├── Zod request validation + prompt sanitization across all user/profile/choice fields
+        ├── Failover Chain (promptBuilder.ts + providerAdapters.ts -> providers.ts):
+        │     1. Gemini 2.5 Flash -> 2.0 Flash -> 2.5 Flash-Lite (GEMINI_API_KEY)
         │     2. Hugging Face Inference Providers router.huggingface.co/v1 (HF_TOKEN)
         │     3. Groq OpenAI-compatible API (GROQ_API_KEY)
         │     4. Built-in deterministic routine generator
@@ -37,6 +40,7 @@ Vercel Serverless Functions (/api/*)
 ## 2. Deterministic Scientific Engine (`src/engine/`)
 
 ### 2.1 India CPCB National AQI (`src/engine/cpcbAqi.ts`)
+
 Implements the official CPCB NAQI 6-band scale (0–500) using linear interpolation:
 
 $$I_p = \frac{I_{hi} - I_{lo}}{BP_{hi} - BP_{lo}} \cdot (C_p - BP_{lo}) + I_{lo}$$
@@ -45,122 +49,86 @@ Overall NAQI = $\max(I_p)$ across available pollutants, clamped to `[0, 500]`, r
 
 **Exact Breakpoint Table (Continuous Upper-Bound Intervals to Prevent Decimal Gaps)**:
 
-| Band | AQI (`I_lo–I_hi`) | PM2.5 (`µg/m³`) | PM10 (`µg/m³`) | NO₂ (`µg/m³`) | SO₂ (`µg/m³`) | O₃ (`µg/m³`) | CO (`mg/m³`) |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| Good | 0–50 | 0–30 | 0–50 | 0–40 | 0–40 | 0–50 | 0–1.0 |
-| Satisfactory | 51–100 | 30–60 | 50–100 | 40–80 | 40–80 | 50–100 | 1.0–2.0 |
-| Moderate | 101–200 | 60–90 | 100–250 | 80–180 | 80–380 | 100–168 | 2.0–10.0 |
-| Poor | 201–300 | 90–120 | 250–350 | 180–280 | 380–800 | 168–208 | 10.0–17.0 |
-| Very Poor | 301–400 | 120–250 | 350–430 | 280–400 | 800–1600 | 208–748 | 17.0–34.0 |
-| Severe | 401–500 | 250–500+ | 430–600+ | 400–600+ | 1600–2400+ | 748–1000+ | 34.0–50.0+ |
+| Band         | AQI (`I_lo–I_hi`) | PM2.5 (`µg/m³`) | PM10 (`µg/m³`) | NO₂ (`µg/m³`) | SO₂ (`µg/m³`) | O₃ (`µg/m³`) | CO (`mg/m³`) |
+| :----------- | :---------------- | :-------------- | :------------- | :------------ | :------------ | :----------- | :----------- |
+| Good         | 0–50              | 0–30            | 0–50           | 0–40          | 0–40          | 0–50         | 0–1.0        |
+| Satisfactory | 51–100            | 30–60           | 50–100         | 40–80         | 40–80         | 50–100       | 1.0–2.0      |
+| Moderate     | 101–200           | 60–90           | 100–250        | 80–180        | 80–380        | 100–168      | 2.0–10.0     |
+| Poor         | 201–300           | 90–120          | 250–350        | 180–280       | 380–800       | 168–208      | 10.0–17.0    |
+| Very Poor    | 301–400           | 120–250         | 350–430        | 280–400       | 800–1600      | 208–748      | 17.0–34.0    |
+| Severe       | 401–500           | 250–500+        | 430–600+       | 400–600+      | 1600–2400+    | 748–1000+    | 34.0–50.0+   |
 
 **Critical Unit Conversion Rule**:
+
 - Open-Meteo returns `carbon_monoxide` in **`µg/m³`**.
 - CPCB CO breakpoints are in **`mg/m³`**.
-- Divide the raw value by `1000` before passing it to `calculatePollutantSubIndex`.
+- `calculateCpcbAqi` divides raw `coUgM3` by `1000` before interpolation.
 
-### 2.2 24-Hour Clean-Air Window Finder (`src/engine/cleanAirWindow.ts`)
-- Inputs: the next 24 hourly forecast entries (`{ time, pm25, pm10, aqi }`) strictly after the current instant, displayed in the city’s timezone (`timezone=auto`).
+### 2.2 24-Hour Clean-Air Window Finder (`src/engine/cleanAirWindow.ts` & `src/engine/openMeteoForecast.ts`)
+
+- Inputs: the next 24 hourly forecast entries (`{ time, pm25, pm10, aqi }`) strictly after the current instant, formatted in the city’s timezone (`timezone=auto`).
 - Ranks consecutive pairs by average overall NAQI, breaking ties by average PM2.5.
-- Outputs:
-  - `bestWindow`: lowest-ranked two-hour slot with local time, average NAQI and PM2.5, and activity guidance.
-  - `worstWindow`: highest-ranked two-hour slot with advice based on its average NAQI.
-  - `exposureSavingsPct`: estimated PM2.5 reduction when shifting an activity from peak to cleanest. It is zero when the cleanest NAQI window has equal or greater PM2.5.
+- Outputs `bestWindow`, `worstWindow`, and `exposureSavingsPct` (clamped to `0` when the cleanest NAQI window has equal or greater PM2.5).
 
 ### 2.3 Choice-Impact Simulator (`src/engine/impactCalculator.ts`)
+
 Pure deterministic model translating household choices into verifiable daily/annual impact:
+
 - **Commute Swap** (round-trip `commuteKm` per day, 240 commute days/yr):
-  - Baseline emission factors (kg CO₂ / km): `solo_car = 0.192`, `scooter = 0.084`, `bus = 0.068`, `metro = 0.028`, `cycle_walk = 0.000`, `wfh = 0.000`.
-  - Daily CO₂ saved = `max(0, (baselineFactor - chosenFactor) * commuteKm)`.
-  - Annual CO₂ saved = `dailyCo2SavedKg * 240`.
-- **Indoor & Personal Exposure Reduction** (multiplicative residual model, never exceeds 92%):
-  - `hepaOrCorsiRosenthal`: reduces indoor PM2.5 infiltration by `55%` (remaining factor `0.45`).
-  - `smartVentilation`: timing cross-ventilation to `bestWindow` reduces indoor spike by `20%` (remaining factor `0.80`).
-  - `cleanCookingExhaust`: using chimney/exhaust + lid/induction reduces indoor cooking PM2.5 by `35%` (remaining factor `0.65`).
-  - `n95OutdoorMask`: reduces outdoor inhaled PM2.5 by `80%` during outdoor hours (weighted `0.25` of day → overall daily reduction factor `0.80`).
-  - `zeroSmokeIndoor`: models a `15%` reduction in indoor PM2.5 from avoiding incense and smoke-producing mosquito coils.
-  - **Community Scale Multiplier** (`calculateCommunityImpact`): scales single-household `annualCo2SavedKg` across `1–200` households into metric tonnes per year (`annualCo2Tonnes`) and mature-tree equivalents (`annualCo2Kg / 21`, rounded to `0.1` trees/yr).
-  - Outputs: `baselineDailyExposureUgM3`, `projectedDailyExposureUgM3`, `exposureReductionPct`, `dailyCo2SavedKg`, `annualCo2SavedKg`, `treesEquivalentPerYear`, and human-readable impact rationale per toggle.
+  - Emission factors (kg CO₂ / km): `solo_car = 0.192`, `scooter = 0.084`, `bus = 0.068`, `metro = 0.028`, `cycle_walk = 0.000`, `wfh = 0.000`.
+  - Daily CO₂ saved = `max(0, (baselineFactor - chosenFactor) * commuteKm)`, Annual CO₂ saved = `dailyCo2SavedKg * 240`.
+- **Indoor & Personal Exposure Reduction** (multiplicative residual model, capped at 92%):
+  - `hepaOrCorsiRosenthal` (`55%`), `cleanCookingExhaust` (`35%` + `85 kg CO₂/yr`), `smartVentilation` (`20%`), `n95OutdoorMask` (`20%` daily weighted), `zeroSmokeIndoor` (`15%`), commute swap (`8%` when annual commute CO₂ > 0).
+  - **Community Scale Multiplier** (`calculateCommunityImpact`): scales single-household `annualCo2SavedKg` across `1–200` households into tonnes/yr and mature-tree equivalents (`21 kg CO₂/tree/yr`).
 
 ### 2.4 Bedroom Time-to-Clean ACH Physics Simulator (`src/engine/roomCleanPhysics.ts`)
-Pure deterministic single-zone exponential decay model estimating how long indoor PM2.5 takes to reach India's CPCB **Good** ceiling (`30 µg/m³`) across room volumes and filtration setups:
-- **Decay Model**: $C(t) = C_{eq} + (C_0 - C_{eq}) \cdot e^{-\text{ACH} \cdot (t / 60)}$, sampled every 10 minutes from `t = 0` to `120` min (`13` points).
-- **Initial Indoor PM2.5**: $C_0 = \max(5, 0.78 \cdot \text{ambientPm25})$.
+
+Pure deterministic single-zone exponential decay model estimating how long indoor PM2.5 takes to reach India's CPCB **Good** ceiling (`30 µg/m³`):
+
+- **Decay Model**: $C(t) = C_{eq} + (C_0 - C_{eq}) \cdot e^{-\text{ACH} \cdot (t / 60)}$, sampled every 10 minutes from `t = 0` to `120` min (`13` points), with $C_0 = \max(5, 0.78 \cdot \text{ambientPm25})$.
 - **Room Presets (9 ft ceiling)**: `small_bedroom` (`1,080 cu ft` / `30.6 m³`), `master_bedroom` (`1,800 cu ft` / `51.0 m³`), `living_room` (`2,880 cu ft` / `81.6 m³`).
-- **Filtration Presets**: `sealed_only` (`CADR = 0 m³/h`, `ACH = 0.5`, `equilibriumFactor = 0.65`), `corsi_rosenthal` (`CADR = 340 m³/h`, `equilibriumFactor = 0.18`), `true_hepa` (`CADR = 260 m³/h`, `equilibriumFactor = 0.14`), where $\text{totalAch} = \max(0.5, \text{CADR} / V + 0.4)$ and $C_{eq} = \max(4, \text{ambientPm25} \cdot \text{equilibriumFactor})$.
-- **Outputs**: 13 sampled curve points, `startPm25`, `endPm25At120Min`, `ach`, `targetPm25: 30`, integer `minutesToSafe` (`0` if already `<= 30`, `null` if unreachable in 120 min), and a plain-English actionable `headline`.
+- **Filtration Presets**: `sealed_only` (`CADR = 0 m³/h`), `corsi_rosenthal` (`CADR = 340 m³/h`), `true_hepa` (`CADR = 260 m³/h`), where $\text{totalAch} = \max(0.5, \text{CADR} / V + 0.4)$ and $C_{eq} = \max(4, \text{ambientPm25} \cdot \text{equilibriumFactor})$.
 
 ---
 
 ## 3. API Contracts & Security (`api/`)
 
 ### 3.1 `GET /api/air-quality`
-- Query params validated via Zod:
-  - Either `q` (string, 2–80 chars, sanitized) for geocoding search via Open-Meteo Geocoding API (`https://geocoding-api.open-meteo.com/v1/search`), OR
-  - `lat` (`-90..90`) & `lon` (`-180..180`) + optional `city` (`1..80` chars) to fetch hourly Open-Meteo Air Quality forecast + optional OpenAQ v3 nearest station.
-- Security: Rejects non-GET methods (`405`), validates numeric bounds, and sets `X-Content-Type-Options: nosniff`. Telemetry cache entries expire after 15 minutes or when the first forecast hour begins, whichever comes first.
+
+- Query params validated via Zod (`AirQualityQuerySchema`): either `q` (`2..80` chars) for geocoding OR `lat` (`-90..90`) & `lon` (`-180..180`) + optional location metadata.
+- Upstream Open-Meteo & OpenAQ payloads validated via Zod (`OpenMeteoAirDataSchema`, `OpenMeteoGeoResponseSchema`, `OpenAqLocationsResponseSchema`).
+- Security: Rejects non-GET (`405`, `Allow: GET`), bounded IP rate limiting (`60` req / `5 min` → `429`), sets `X-Content-Type-Options: nosniff`, and caches telemetry in a 500-entry `BoundedTtlCache` expiring after 15 minutes or when the first forecast hour begins.
 
 ### 3.2 `POST /api/assistant`
-- Request body validated via Zod (`AssistantRequestSchema`):
-  - `city`: string (1–80 chars)
-  - `aqi`: number (`0..500`), `category`: string, `dominantPollutant`: string, `pm25`: number, `pm10`: number
-  - `bestWindowLabel`: string, `worstWindowLabel`: string, `worstWindowAqi`: optional number
-  - `profile` contains household members, commute mode and distance, optional display labels for the usual and alternative commutes, home type, and budget tier.
-  - `activeChoices`: string[] (max 10)
-  - `impactSummary`: `{ exposureReductionPct: number, annualCo2SavedKg: number }`
-  - `userQuestion`: optional string (max 300 chars, stripped of control chars & prompt-injection delimiters)
-- The function allows up to 20 requests per IP in a five-minute window per instance. It returns `429` with `Retry-After` when that limit is reached.
-- Provider Failover Order:
-  1. **Gemini 2.5 Flash**: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent` with `responseMimeType: "application/json"`.
-  2. **Hugging Face Inference Providers**: `https://router.huggingface.co/v1/chat/completions` (`model: process.env.HF_MODEL || 'Qwen/Qwen2.5-72B-Instruct'`).
-  3. **Groq**: `https://api.groq.com/openai/v1/chat/completions` (`model: 'llama-3.3-70b-versatile'`).
-  4. **Deterministic Fallback**: Local TypeScript routine generator grounded in exact CPCB band + household profile + choice simulator numbers.
-- Compatibility retries stay within each provider. Gemini tries 2.0 Flash after a 400 or 404, then Flash-Lite if the legacy model is also unavailable. Hugging Face tries Llama 3.3 after a 404 or 422. Groq tries GPT-OSS 120B after an unsupported legacy request.
-- The assistant normalizes supported snake_case aliases before validating provider output. Built-in responses may include `debugReason` with provider HTTP statuses and schema error names.
-- The response contains a validated plan, the provider that generated it, and its display label.
-  ```ts
-  {
-    provider: 'gemini' | 'huggingface' | 'groq' | 'deterministic-fallback',
-    modelLabel: string,
-    debugReason?: string,
-    summary: string,
-    dailyRoutine: Array<{ timeBlock: string; action: string; whyItHelps: string }>,
-    indoorHacks: Array<{ title: string; steps: string; costTier: string; impact: string }>,
-    sustainableSwaps: Array<{ swap: string; directImpact: string }>,
-    safetyNote: string
-  }
-  ```
 
----
+- Enforces `MAX_ASSISTANT_BODY_BYTES = 16 KB` (`413 Payload Too Large`) before `JSON.parse`, prefers trusted platform IP headers (`x-vercel-forwarded-for`, `x-real-ip`) before `x-forwarded-for`, enforces bounded IP rate limiting (`20` req / `5 min` → `429` with `Retry-After`), validates inputs via `AssistantRequestSchema`, and sanitizes all user, profile, and choice strings via `sanitizeUserText`.
+- Provider failover (`api/_lib/providers.ts` orchestrating `promptBuilder.ts` and `providerAdapters.ts`): `Gemini 2.5 Flash` (with `2.0 Flash` / `2.5 Flash-Lite` compatibility retries) → `Hugging Face Router` → `Groq` → `Deterministic Fallback`.
+- Normalizes supported snake_case aliases and validates output with `AssistantPlanOutputSchema`.
 
 ### 3.3 `GET /api/health`
 
-Returns `ok` and Boolean flags for Gemini, Hugging Face, Groq, and OpenAQ configuration. The response is uncached and includes only flags. Provider connectivity is checked when the corresponding feature runs.
+- Returns `ok: true` and boolean configuration flags for Gemini, Hugging Face, Groq, and OpenAQ with `Cache-Control: no-store` and `Allow: GET` on non-GET `405` responses.
+
+---
 
 ## 4. Accessibility & Security Controls
+
 - **WCAG 2.1 AA**:
-  - Skip-to-main-content link (`<a href="#main-content" className="sr-only focus:not-sr-only">`).
-  - Semantic landmarks: `<header>`, `<main id="main-content">`, `<section aria-labelledby="...">`, `<footer>`.
-  - Dynamic AQI status & AI plan updates announced via `aria-live="polite"`.
-  - All interactive toggles use native `<button aria-pressed={...}>` or `<input type="checkbox">` with visible focus rings (`focus-visible:outline-2`).
-  - Color is never the sole indicator of AQI severity: every badge displays text label + numeric score + icon.
+  - Skip-to-main-content link (`<a href="#main-content" className="skip-link">`), semantic landmarks (`<header>`, `<nav>`, `<main id="main-content" tabIndex={-1}>`, `<section>`, `<footer>`), polite live status region, and top-level `ErrorBoundary` recovery (`role="alert"`).
+  - Native `<svg role="img">` with `<title>`/`<desc>` labels on both the CPCB NAQI radial gauge (`AqiHero.tsx`) and Bedroom ACH decay chart (`RoomCleanChartSvg.tsx`).
+  - Explicit `<button aria-expanded={...} aria-controls={...}>` disclosures, `aria-live="polite"` readouts, keyboard Tab/Enter/Escape/Arrow navigation, `aria-pressed` toggles, `aria-busy` loading indicators, and `prefers-reduced-motion` support.
 - **Security Headers (`vercel.json`)**:
-  - `X-Content-Type-Options: nosniff`
-  - `X-Frame-Options: DENY`
-  - `Referrer-Policy: strict-origin-when-cross-origin`
-  - `Permissions-Policy: camera=(), microphone=(), geolocation=(self)`
-  - `Content-Security-Policy` restricting script/connect origins cleanly.
+  - `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`
+  - `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-Permitted-Cross-Domain-Policies: none`
+  - `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: camera=(), microphone=(), geolocation=(self)`
+  - `Content-Security-Policy` with zero `'unsafe-inline'` in `script-src` or `style-src`, `object-src 'none'`, `frame-ancestors 'none'`, and `'wasm-unsafe-eval'` scoped for opt-in Transformers.js ONNX WASM.
 
 ---
 
 ## 5. Tests and CI
-- **Unit Tests**:
-  - `src/test/cpcbAqi.test.ts`: Exact boundary values, decimal boundary continuity (`30.4`), CO `µg/m³ → mg/m³` conversion, severe clamping (`> 500`), dominant pollutant selection.
-  - `src/test/cleanAirWindow.test.ts`: Finds true minimum/maximum 2-hour windows, handles flat series and short arrays gracefully.
-  - `src/test/impactCalculator.test.ts`: Commute CO₂ math, multiplicative indoor exposure cap (`<= 92%`), zero-km edge cases, and `Community Scale` household multiplier precision.
-  - `src/test/roomCleanPhysics.test.ts`: Safe-air `0`-minute floor, 13-point monotonic PM2.5 decay, severe smog (`180 µg/m³`) filtration separation, and room-volume scaling.
-  - `src/test/communityAlert.test.ts`: WhatsApp/family alert formatter across clean, peak, and unavailable forecast windows.
-  - `src/test/providerFailover.test.ts`: Verifies Gemini → Hugging Face Router → Groq → Deterministic fallback order and schema validation.
-- **UI & Accessibility Tests**:
-  - `src/test/App.a11y.test.tsx` renders the app with mocked telemetry, exercises the interactive forecast chart, Routine Planner, Impact Lab (including `Community Scale` and `RoomCleanCurve`), and Playbook Search, and validates zero violations with `vitest-axe`.
-- **CI (`.github/workflows/ci.yml`)**: Runs `npm ci`, `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`, and enforces repo size `< 10 MB`.
+
+- **Automated Test Suites (`src/test/`)**:
+  - Domain engines: `cpcbAqi.test.ts`, `cleanAirWindow.test.ts`, `impactCalculator.test.ts`, `roomCleanPhysics.test.ts`, `communityAlert.test.ts`, `engineCoverage.test.ts`
+  - API & infrastructure: `boundedCache.test.ts`, `providerFailover.test.ts`, `providerAdapters.test.ts`, `assistantHandler.test.ts`, `airQualityHandler.test.ts`, `healthHandler.test.ts`
+  - Client services & UI/a11y: `airQualityClient.test.ts`, `semanticPlaybook.test.ts`, `ErrorBoundary.test.tsx`, `components.test.tsx`, `impactAndPlanner.test.tsx`, `App.a11y.test.tsx`, `App.keyboard.test.tsx`, `App.landmarks.test.tsx`
+- **CI (`.github/workflows/ci.yml`)**: Runs `npm ci`, `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run test:coverage`, `npm audit --omit=dev`, `npm run build`, and enforces repo size `< 10 MB`.

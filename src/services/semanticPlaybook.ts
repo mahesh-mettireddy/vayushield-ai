@@ -1,15 +1,18 @@
 import type { PlaybookTip } from '../types/airQuality';
 
+/** Scored playbook entry tagged with its matching engine (`keyword` or `hf-wasm`). */
 export interface RankedPlaybookTip {
   tip: PlaybookTip;
   score: number;
   mode: 'keyword' | 'hf-wasm';
 }
 
+/** Shape of tensor output returned by Hugging Face Transformers feature extraction pipelines. */
 export interface FeatureTensorLike {
   data: Float32Array | number[] | ArrayLike<number>;
 }
 
+/** Function interface for a browser WASM sentence-embedding extractor. */
 export type FeatureExtractor = (
   text: string,
   options?: { pooling?: 'mean'; normalize?: boolean }
@@ -23,6 +26,7 @@ function tokenize(text: string): string[] {
     .filter((token) => token.length > 1);
 }
 
+/** Ranks indoor air playbook tips instantaneously using normalized keyword overlap. */
 export function rankPlaybookByKeywords(query: string, tips: PlaybookTip[]): RankedPlaybookTip[] {
   if (!query.trim()) {
     return tips.map((tip) => ({ tip, score: 1, mode: 'keyword' }));
@@ -32,13 +36,14 @@ export function rankPlaybookByKeywords(query: string, tips: PlaybookTip[]): Rank
 
   return tips
     .map((tip) => {
-      const haystack = new Set(tokenize(`${tip.title} ${tip.summary} ${tip.steps} ${tip.keywords.join(' ')}`));
+      const haystack = new Set(
+        tokenize(`${tip.title} ${tip.summary} ${tip.steps} ${tip.keywords.join(' ')}`)
+      );
       let matches = 0;
       for (const token of tokens) {
         if (haystack.has(token)) matches += 1;
       }
-      const score = matches / tokens.length;
-      return { tip, score, mode: 'keyword' as const };
+      return { tip, score: matches / tokens.length, mode: 'keyword' as const };
     })
     .filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score);
@@ -72,8 +77,9 @@ function isNumericTensorData(value: unknown): value is Float32Array | number[] |
 }
 
 function isFeatureTensor(value: unknown): value is FeatureTensorLike {
-  if (typeof value !== 'object' || value === null) return false;
-  return isNumericTensorData(Reflect.get(value, 'data'));
+  return (
+    typeof value === 'object' && value !== null && isNumericTensorData(Reflect.get(value, 'data'))
+  );
 }
 
 function isFeatureExtractor(value: unknown): value is FeatureExtractor {
@@ -89,13 +95,28 @@ function extractVector(tensor: unknown): number[] {
 
 let cachedExtractor: FeatureExtractor | null = null;
 
+/** Clears the cached browser WASM feature-extraction pipeline instance. */
 export function resetSemanticExtractorCache(): void {
   cachedExtractor = null;
 }
 
-/**
- * Lazily loads Hugging Face Transformers.js (WASM) in the browser only when the user opts in.
- */
+async function getOrCreateExtractor(): Promise<FeatureExtractor> {
+  if (cachedExtractor) return cachedExtractor;
+  const transformers = await import('@huggingface/transformers');
+  // The library's WASM cache loads its factory from a blob URL. Use HTTP caching under the app's CSP.
+  transformers.env.useWasmCache = false;
+  const created: unknown = await transformers.pipeline(
+    'feature-extraction',
+    'Xenova/all-MiniLM-L6-v2'
+  );
+  if (!isFeatureExtractor(created)) {
+    throw new Error('Local feature extraction pipeline failed to initialize.');
+  }
+  cachedExtractor = created;
+  return cachedExtractor;
+}
+
+/** Lazily loads Hugging Face Transformers.js (WASM) in the browser only when the user opts in. */
 export async function rankPlaybookWithLocalHf(
   query: string,
   tips: PlaybookTip[]
@@ -105,26 +126,13 @@ export async function rankPlaybookWithLocalHf(
     return tips.map((tip) => ({ tip, score: 1, mode: 'hf-wasm' }));
   }
 
-  if (!cachedExtractor) {
-    const transformers = await import('@huggingface/transformers');
-    // The library's WASM cache loads its factory from a blob URL. Use HTTP caching under the app's CSP.
-    transformers.env.useWasmCache = false;
-    const created: unknown = await transformers.pipeline(
-      'feature-extraction',
-      'Xenova/all-MiniLM-L6-v2'
-    );
-    if (!isFeatureExtractor(created)) {
-      throw new Error('Local feature extraction pipeline failed to initialize.');
-    }
-    cachedExtractor = created;
-  }
-
-  const queryVec = extractVector(await cachedExtractor(cleanQuery, { pooling: 'mean', normalize: true }));
-
+  const extractor = await getOrCreateExtractor();
+  const queryVec = extractVector(await extractor(cleanQuery, { pooling: 'mean', normalize: true }));
   const scored: RankedPlaybookTip[] = [];
+
   for (const tip of tips) {
     const docText = `${tip.title}. ${tip.summary} ${tip.steps}`;
-    const docVec = extractVector(await cachedExtractor(docText, { pooling: 'mean', normalize: true }));
+    const docVec = extractVector(await extractor(docText, { pooling: 'mean', normalize: true }));
     scored.push({
       tip,
       score: Math.max(0, Math.round(cosineSimilarity(queryVec, docVec) * 100) / 100),

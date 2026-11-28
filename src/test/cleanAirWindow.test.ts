@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { analyzeCleanAirWindows } from '../engine/cleanAirWindow';
+import { analyzeCleanAirWindows, formatWindowRange } from '../engine/cleanAirWindow';
 import { readOpenMeteoForecast } from '../engine/openMeteoForecast';
 import type { HourlyAirPoint } from '../types/airQuality';
 
@@ -8,7 +8,10 @@ describe('24-Hour Clean-Air Window Finder', () => {
     const now = Date.parse('2026-11-24T18:30:00Z');
     const time = Array.from({ length: 27 }, (_, i) => now / 1000 + (i - 1) * 3600);
     const pm2_5 = time.map((_, i) => i + 10);
-    const forecast = readOpenMeteoForecast({ timezone: 'Asia/Kolkata', hourly: { time, pm2_5 } }, now);
+    const forecast = readOpenMeteoForecast(
+      { timezone: 'Asia/Kolkata', hourly: { time, pm2_5 } },
+      now
+    );
     expect(forecast.hourly).toHaveLength(24);
     expect(forecast.hourly[0]).toMatchObject({
       time: '2026-11-24T19:30:00.000Z',
@@ -59,18 +62,44 @@ describe('24-Hour Clean-Air Window Finder', () => {
   it('breaks equal NAQI ties by PM2.5 and gives routine advice for a low peak', () => {
     const hours: HourlyAirPoint[] = [40, 30, 20].map((pm25, i) => ({
       time: new Date(Date.UTC(2026, 10, 24, 7 + i)).toISOString(),
-      hourLabel: (7 + i) + ' AM', pm25, pm10: 2 * pm25, aqi: 95
+      hourLabel: 7 + i + ' AM',
+      pm25,
+      pm10: 2 * pm25,
+      aqi: 95
     }));
     const analysis = analyzeCleanAirWindows(hours);
     expect(analysis.bestWindow.startLabel).toBe('8 AM');
     expect(analysis.worstWindow.startLabel).toBe('7 AM');
     expect(analysis.worstWindow.advice).toMatch(/normal outdoor activity/i);
-    expect(analyzeCleanAirWindows(hours.map((hour) => ({ ...hour, aqi: 150 }))).worstWindow.advice).toMatch(/sensitive groups/i);
+    expect(
+      analyzeCleanAirWindows(hours.map((hour) => ({ ...hour, aqi: 150 }))).worstWindow.advice
+    ).toMatch(/sensitive groups/i);
   });
 
   it('handles empty arrays gracefully without throwing', () => {
     const analysis = analyzeCleanAirWindows([]);
     expect(analysis.exposureSavingsPct).toBe(0);
     expect(analysis.bestWindow.avgPm25).toBe(0);
+    expect(formatWindowRange(analysis.bestWindow)).toBe('Unavailable');
+  });
+
+  it('derives end labels when omitted, handles zero PM2.5, and advises appropriately for high smog troughs', () => {
+    const wrapHours: HourlyAirPoint[] = [
+      { time: '2026-11-24T11:00Z', hourLabel: '11 AM', pm25: 0, pm10: 0, aqi: 0 },
+      { time: '2026-11-24T12:00Z', hourLabel: '12 PM', pm25: 0, pm10: 0, aqi: 0 },
+      { time: '2026-11-24T23:00Z', hourLabel: '11 PM', pm25: 0, pm10: 0, aqi: 0 },
+      { time: '2026-11-25T00:00Z', hourLabel: '12 AM', pm25: 0, pm10: 0, aqi: 0 }
+    ];
+    const zeroAnalysis = analyzeCleanAirWindows(wrapHours);
+    expect(zeroAnalysis.exposureSavingsPct).toBe(0);
+    expect(formatWindowRange(zeroAnalysis.bestWindow)).toBe('11 AM – 1 PM');
+
+    const oddLabelHours: HourlyAirPoint[] = [
+      { time: '2026-11-24T14:00Z', hourLabel: '14:00', pm25: 140, pm10: 210, aqi: 315 },
+      { time: '2026-11-24T15:00Z', hourLabel: '15:00', pm25: 150, pm10: 220, aqi: 325 }
+    ];
+    const highAnalysis = analyzeCleanAirWindows(oddLabelHours);
+    expect(highAnalysis.bestWindow.endLabel).toBe('15:00');
+    expect(highAnalysis.bestWindow.advice).toMatch(/lowest forecast NAQI/i);
   });
 });

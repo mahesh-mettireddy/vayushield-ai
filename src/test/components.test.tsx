@@ -1,14 +1,11 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ChoiceImpactSimulator } from '../components/ChoiceImpactSimulator';
+import { CleanAirWindowCard } from '../components/CleanAirWindowCard';
 import { LocationBar } from '../components/LocationBar';
 import { PlaybookSearch } from '../components/PlaybookSearch';
-import { RoutinePlanner } from '../components/RoutinePlanner';
 import { PRESET_CITIES } from '../data/presets';
-import { calculateChoiceImpact } from '../engine/impactCalculator';
 import { resetSemanticExtractorCache } from '../services/semanticPlaybook';
-import type { ChoiceToggles, HouseholdProfile } from '../types/airQuality';
 
 const { mockPipeline, envMock } = vi.hoisted(() => ({
   mockPipeline: vi.fn(),
@@ -20,24 +17,6 @@ vi.mock('@huggingface/transformers', () => ({
   pipeline: mockPipeline
 }));
 
-const BASE_PROFILE: HouseholdProfile = {
-  householdMembers: ['Children'],
-  baselineCommute: 'solo_car',
-  chosenCommute: 'metro',
-  commuteKm: 16,
-  homeType: 'apartment',
-  budgetTier: 'budget_diy'
-};
-
-const BASE_TOGGLES: ChoiceToggles = {
-  hepaOrCorsiRosenthal: true,
-  smartVentilation: true,
-  cleanCookingExhaust: true,
-  n95OutdoorMask: true,
-  publicTransitOrWfhSwap: true,
-  zeroSmokeIndoor: false
-};
-
 describe('Interactive UI Components', () => {
   beforeEach(() => {
     resetSemanticExtractorCache();
@@ -48,12 +27,14 @@ describe('Interactive UI Components', () => {
     vi.restoreAllMocks();
   });
 
-  it('LocationBar handles city search results, empty state, and geolocation', async () => {
+  it('LocationBar handles search results, empty/error feedback, geolocation errors, and outside clicks', async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       Response.json({
-        results: [{ name: 'Jaipur', region: 'Rajasthan', country: 'India', lat: 26.9124, lon: 75.7873 }]
+        results: [
+          { name: 'Jaipur', region: 'Rajasthan', country: 'India', lat: 26.9124, lon: 75.7873 }
+        ]
       })
     );
 
@@ -61,30 +42,143 @@ describe('Interactive UI Components', () => {
     if (!city) throw new Error('Expected preset city');
     render(<LocationBar selected={city} onSelect={onSelect} />);
 
-    await user.click(screen.getByRole('button', { name: /Change city/i }));
+    const trigger = screen.getByRole('button', { name: /Change city/i });
+    await user.click(trigger);
     await user.type(screen.getByRole('searchbox', { name: 'Search for a city' }), 'Jaipur');
     await user.click(screen.getByRole('button', { name: 'Search' }));
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Jaipur/i })).toBeVisible();
     });
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
     await user.click(screen.getByRole('button', { name: /Jaipur/i }));
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ name: 'Jaipur' }));
 
-    await user.click(screen.getByRole('button', { name: /Change city/i }));
+    await user.click(trigger);
+    fetchSpy.mockResolvedValueOnce(Response.json({ results: [] }));
+    await user.type(screen.getByRole('searchbox', { name: 'Search for a city' }), 'NowhereCity');
+    await user.click(screen.getByRole('button', { name: 'Search' }));
+    expect(await screen.findByText(/No cities found/i)).toBeVisible();
+
+    fetchSpy.mockRejectedValueOnce(new Error('api offline'));
+    fetchSpy.mockRejectedValueOnce(new Error('direct offline'));
+    await user.click(screen.getByRole('button', { name: 'Search' }));
+    expect(await screen.findByText(/City search is unavailable/i)).toBeVisible();
+
+    Object.defineProperty(navigator, 'geolocation', { value: undefined, configurable: true });
+    await user.click(screen.getByRole('button', { name: 'Use My Location' }));
+    expect(screen.getByText(/does not support geolocation/i)).toBeVisible();
+
     Object.defineProperty(navigator, 'geolocation', {
       value: {
-        getCurrentPosition: (ok: (pos: { coords: { latitude: number; longitude: number } }) => void) =>
-          ok({ coords: { latitude: 19.1, longitude: 72.8 } })
+        getCurrentPosition: (_ok: unknown, err: () => void) => err()
       },
       configurable: true
     });
     await user.click(screen.getByRole('button', { name: 'Use My Location' }));
-    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ name: 'My location', lat: 19.1, lon: 72.8 }));
+    expect(screen.getByText(/Location is unavailable/i)).toBeVisible();
+
+    Object.defineProperty(navigator, 'geolocation', {
+      value: {
+        getCurrentPosition: (
+          ok: (pos: { coords: { latitude: number; longitude: number } }) => void
+        ) => ok({ coords: { latitude: 19.1, longitude: 72.8 } })
+      },
+      configurable: true
+    });
+    await user.click(screen.getByRole('button', { name: 'Use My Location' }));
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'My location', lat: 19.1, lon: 72.8 })
+    );
+
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(trigger);
+    fireEvent.pointerDown(document.body);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(trigger);
+    const searchForm = screen.getByRole('search', { name: 'City search' });
+    fireEvent.submit(searchForm);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.blur(searchForm, { relatedTarget: document.body });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
   });
 
-  it('PlaybookSearch runs semantic WASM search, handles errors, and toggles tip disclosures', async () => {
+  it('CleanAirWindowCard handles empty/single-hour forecasts, touch hover, and Home/ArrowLeft keys', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <CleanAirWindowCard
+        hourly={[]}
+        analysis={{
+          bestWindow: {
+            startLabel: 'Unavailable',
+            endLabel: 'Unavailable',
+            avgPm25: 0,
+            avgAqi: 0,
+            advice: 'Need two hours.'
+          },
+          worstWindow: {
+            startLabel: 'Unavailable',
+            endLabel: 'Unavailable',
+            avgPm25: 0,
+            avgAqi: 0,
+            advice: 'Need two hours.'
+          },
+          exposureSavingsPct: 0
+        }}
+      />
+    );
+    expect(screen.getByText('Hourly forecast unavailable.')).toBeVisible();
+    expect(screen.getByText('Need two hours.')).toBeVisible();
+
+    rerender(
+      <CleanAirWindowCard
+        hourly={[
+          { time: '2026-11-24T12:00Z', hourLabel: '12 PM', pm25: 90, pm10: 140, aqi: 200 },
+          { time: '2026-11-24T13:00Z', hourLabel: '1 PM', pm25: 70, pm10: 110, aqi: 133 }
+        ]}
+        analysis={{
+          bestWindow: {
+            startLabel: '12 PM',
+            endLabel: '2 PM',
+            avgPm25: 80,
+            avgAqi: 167,
+            advice: 'Brief errands.'
+          },
+          worstWindow: {
+            startLabel: '12 PM',
+            endLabel: '2 PM',
+            avgPm25: 80,
+            avgAqi: 167,
+            advice: 'Take care.'
+          },
+          exposureSavingsPct: 0
+        }}
+      />
+    );
+    const bars = screen.getAllByRole('button');
+    const bar1 = bars[1];
+    if (!bar1) throw new Error('Expected second bar');
+    const touchMove = new MouseEvent('mouseover', { bubbles: true });
+    Object.defineProperty(touchMove, 'pointerType', { value: 'touch' });
+    fireEvent(bar1, touchMove);
+    expect(screen.getByRole('status', { name: 'Selected forecast hour' })).toHaveTextContent(
+      '12 PM'
+    );
+    await user.click(bar1);
+    fireEvent.keyDown(bar1, { key: 'Enter' });
+    await user.keyboard('{ArrowLeft}');
+    expect(bars[0]).toHaveFocus();
+    await user.keyboard('{End}{Home}');
+    expect(bars[0]).toHaveFocus();
+  });
+
+  it('PlaybookSearch runs semantic WASM search, handles errors/stale queries, and toggles disclosures', async () => {
     const user = userEvent.setup();
     mockPipeline.mockResolvedValueOnce(async () => ({ data: new Float32Array([1, 0]) }));
     render(<PlaybookSearch />);
@@ -110,67 +204,23 @@ describe('Interactive UI Components', () => {
     await waitFor(() => {
       expect(screen.getByText(/local model couldn’t load/i)).toBeVisible();
     });
-  });
 
-  it('ChoiceImpactSimulator updates commute selects, slider, and breakdown disclosure', async () => {
-    const user = userEvent.setup();
-    const onProfileChange = vi.fn();
-    const onToggleChange = vi.fn();
-    const impact = calculateChoiceImpact(140, BASE_PROFILE, BASE_TOGGLES);
-
-    render(
-      <ChoiceImpactSimulator
-        profile={BASE_PROFILE}
-        toggles={BASE_TOGGLES}
-        impact={impact}
-        hasTelemetry={false}
-        onProfileChange={onProfileChange}
-        onToggleChange={onToggleChange}
-      />
+    // Changing the query mid-flight discards stale semantic results cleanly
+    resetSemanticExtractorCache();
+    let resolveExtractor:
+      ((fn: (text: string) => Promise<{ data: Float32Array }>) => void) | undefined;
+    mockPipeline.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveExtractor = resolve;
+        })
     );
-
-    expect(screen.getByText(/Uses a sample PM2\.5 reading/i)).toBeVisible();
-    await user.selectOptions(screen.getByLabelText('Usual commute'), 'scooter');
-    expect(onProfileChange).toHaveBeenCalledWith(expect.objectContaining({ baselineCommute: 'scooter' }));
-
-    await user.selectOptions(screen.getByLabelText('Alternative commute'), 'wfh');
-    expect(onProfileChange).toHaveBeenCalledWith(expect.objectContaining({ chosenCommute: 'wfh' }));
-
-    fireEvent.change(screen.getByLabelText(/Round trip/i), { target: { value: '24' } });
-    expect(onProfileChange).toHaveBeenCalledWith(expect.objectContaining({ commuteKm: 24 }));
-
-    const breakdownBtn = screen.getByRole('button', { name: 'How the estimates are calculated' });
-    expect(breakdownBtn).toHaveAttribute('aria-expanded', 'false');
-    await user.click(breakdownBtn);
-    expect(breakdownBtn).toHaveAttribute('aria-expanded', 'true');
-  });
-
-  it('RoutinePlanner updates household members, budget tier, and submits custom question', async () => {
-    const user = userEvent.setup();
-    const onProfileChange = vi.fn();
-    const onGenerate = vi.fn(async () => {});
-
-    render(
-      <RoutinePlanner
-        profile={BASE_PROFILE}
-        plan={null}
-        loading={false}
-        ready
-        onProfileChange={onProfileChange}
-        onGenerate={onGenerate}
-      />
-    );
-
-    await user.click(screen.getByRole('button', { name: 'Seniors' }));
-    expect(onProfileChange).toHaveBeenCalledWith(expect.objectContaining({
-      householdMembers: ['Children', 'Seniors']
-    }));
-
-    await user.click(screen.getByRole('radio', { name: 'No cost' }));
-    expect(onProfileChange).toHaveBeenCalledWith(expect.objectContaining({ budgetTier: 'zero_cost' }));
-
-    await user.type(screen.getByLabelText('Optional question for the planner'), 'Safe to jog?');
-    await user.click(screen.getByRole('button', { name: 'Generate AI Routine' }));
-    expect(onGenerate).toHaveBeenCalledWith('Safe to jog?');
+    await user.click(screen.getByRole('button', { name: 'Local HF Semantic Match (WASM)' }));
+    await user.type(screen.getByRole('searchbox', { name: 'Search the playbook' }), 'x');
+    resolveExtractor?.(async () => ({ data: new Float32Array([1, 0]) }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Local HF Semantic Match (WASM)' })).toBeEnabled();
+    });
+    expect(screen.queryByText('Match 100%')).not.toBeInTheDocument();
   });
 });

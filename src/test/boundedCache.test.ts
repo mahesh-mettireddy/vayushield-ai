@@ -54,10 +54,20 @@ describe('BoundedTtlCache', () => {
     cache.set('live', 'ok', 9_000);
     expect(cache.delete('live')).toBe(true);
     expect(cache.delete('live')).toBe(false);
+    expect(cache.get('missing')).toBeUndefined();
 
     cache.set('a', '1', 9_000);
+    cache.set('a', 'updated', 9_500);
+    expect(cache.get('a')).toBe('updated');
     cache.set('b', '2', 9_000);
     cache.clear();
     expect(cache.size).toBe(0);
+
+    const minCapCache = new BoundedTtlCache<string>(0, () => 1_000);
+    minCapCache.set('only', 'first', 5_000);
+    minCapCache.set('second', 'wins', 5_000);
+    expect(minCapCache.get('only')).toBeUndefined();
+    expect(minCapCache.get('second')).toBe('wins');
+    expect(minCapCache.size).toBe(1);
   });
 });

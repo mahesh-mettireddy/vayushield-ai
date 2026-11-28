@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { AssistantPlan } from '../../src/types/airQuality.js';
 import { AssistantPlanOutputSchema } from './schemas.js';
 
+/** Optional server-side environment credentials used for multi-tier LLM failover. */
 export interface ProviderEnv {
   GEMINI_API_KEY?: string;
   HF_TOKEN?: string;
@@ -9,36 +10,54 @@ export interface ProviderEnv {
   GROQ_API_KEY?: string;
 }
 
+/** Provider model identifier paired with its user-facing display label. */
 export interface ProviderModel {
   id: string;
   label: string;
 }
 
 const geminiEnvelope = z.object({
-  candidates: z.array(z.object({
-    content: z.object({ parts: z.array(z.object({ text: z.string().optional(), thought: z.boolean().optional() })) })
-  })).min(1)
+  candidates: z
+    .array(
+      z.object({
+        content: z.object({
+          parts: z.array(z.object({ text: z.string().optional(), thought: z.boolean().optional() }))
+        })
+      })
+    )
+    .min(1)
 });
 
 const chatEnvelope = z.object({
   choices: z.array(z.object({ message: z.object({ content: z.string() }) })).min(1)
 });
 
+/** Structured provider HTTP or response-shape error without exposing credentials. */
 export class ProviderFailure extends Error {
-  constructor(message: string, readonly status?: number) {
+  constructor(
+    message: string,
+    readonly status?: number
+  ) {
     super(message);
   }
 }
 
+/** Logs controlled provider failure reasons without echoing user prompts or secrets. */
 export function logProviderFailure(provider: string, error: unknown): void {
-  const reason = error instanceof ProviderFailure ? error.message
-    : error instanceof z.ZodError ? 'unexpected response shape'
-      : error instanceof SyntaxError ? 'invalid JSON'
-        : error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name) ? 'request timed out'
-          : 'request failed';
+  const reason =
+    error instanceof ProviderFailure
+      ? error.message
+      : error instanceof z.ZodError
+        ? 'unexpected response shape'
+        : error instanceof SyntaxError
+          ? 'invalid JSON'
+          : error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name)
+            ? 'request timed out'
+            : 'request failed';
   console.error(`[assistant] ${provider}: ${reason}`);
 }
 
+/** Extracts the first JSON object from plain or Markdown-fenced model output. */
 export function extractJsonObject(rawText: string): unknown {
   const trimmed = rawText.trim();
   const fencedMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -51,6 +70,7 @@ export function extractJsonObject(rawText: string): unknown {
   return JSON.parse(candidate.slice(firstBrace, lastBrace + 1));
 }
 
+/** Attempts a prioritized list of models for one provider, retrying only on configured compatibility statuses. */
 export async function tryModels(
   provider: string,
   models: ProviderModel[],
@@ -74,6 +94,7 @@ export async function tryModels(
   return undefined;
 }
 
+/** Calls Google Gemini's `generateContent` endpoint and validates the returned routine JSON. */
 export async function callGemini(
   apiKey: string,
   model: ProviderModel,
@@ -104,7 +125,10 @@ export async function callGemini(
 
   const data = geminiEnvelope.parse(await res.json());
   const text = data.candidates[0]?.content.parts
-    .filter((part) => !part.thought).map((part) => part.text ?? '').join('').trim();
+    .filter((part) => !part.thought)
+    .map((part) => part.text ?? '')
+    .join('')
+    .trim();
   if (!text) throw new ProviderFailure('empty response text');
 
   const parsed = AssistantPlanOutputSchema.parse(extractJsonObject(text));
@@ -115,6 +139,7 @@ export async function callGemini(
   };
 }
 
+/** Calls an OpenAI-compatible chat completions endpoint (Hugging Face Router or Groq) and validates the plan JSON. */
 export async function callOpenAiCompatible(
   endpoint: string,
   token: string,

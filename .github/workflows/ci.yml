@@ -28,8 +28,14 @@ jobs:
       - name: ESLint + jsx-a11y check
         run: npm run lint
 
-      - name: Unit, Integration & Accessibility tests
-        run: npm test
+      - name: Prettier format check
+        run: npm run format:check
+
+      - name: Unit, Integration & Accessibility tests with coverage
+        run: npm run test:coverage
+
+      - name: Dependency vulnerability check
+        run: npm audit --omit=dev
 
       - name: Production build
         run: npm run build

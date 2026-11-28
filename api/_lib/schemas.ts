@@ -2,12 +2,18 @@ import { z } from 'zod';
 import { BoundedTtlCache } from './boundedCache.js';
 import type { VercelRequest } from './httpTypes.js';
 
+function stripControlChars(raw: string): string {
+  let result = '';
+  for (const ch of raw) {
+    const code = ch.charCodeAt(0);
+    result += code <= 0x1f || code === 0x7f ? ' ' : ch;
+  }
+  return result;
+}
+
 /** Strips control characters and prompt-injection delimiters from user-supplied text. */
 export function sanitizeUserText(raw: string, maxLength: number): string {
-  return raw
-    // Deliberately strips ASCII control characters from user text.
-    // eslint-disable-next-line no-control-regex
-    .replace(/[\u0000-\u001F\u007F]/g, ' ')
+  return stripControlChars(raw)
     .replace(/```|<<<|>>>|<\/?system>|<\/?assistant>/gi, '')
     .replace(/\s+/g, ' ')
     .trim()
@@ -15,8 +21,8 @@ export function sanitizeUserText(raw: string, maxLength: number): string {
 }
 
 function readHeaderValue(header: string | string[] | undefined): string {
-  if (Array.isArray(header)) return header[0]?.split(',')[0]?.trim() ?? '';
-  return header?.split(',')[0]?.trim() ?? '';
+  const first = Array.isArray(header) ? header[0] : header;
+  return first?.split(',')[0]?.trim() ?? '';
 }
 
 /**
@@ -34,27 +40,33 @@ export function extractClientIp(req: Pick<VercelRequest, 'headers' | 'socket'>):
   return resolved.slice(0, 64);
 }
 
+/** Zod schema validating upstream Open-Meteo air-quality responses. */
 export const OpenMeteoAirDataSchema = z.object({
   timezone: z.string().min(1),
-  current: z.object({
-    pm2_5: z.number().nullable().optional(),
-    pm10: z.number().nullable().optional(),
-    nitrogen_dioxide: z.number().nullable().optional(),
-    sulphur_dioxide: z.number().nullable().optional(),
-    ozone: z.number().nullable().optional(),
-    carbon_monoxide: z.number().nullable().optional()
-  }).optional(),
-  hourly: z.object({
-    time: z.array(z.number()),
-    pm2_5: z.array(z.number().nullable()).optional(),
-    pm10: z.array(z.number().nullable()).optional(),
-    nitrogen_dioxide: z.array(z.number().nullable()).optional(),
-    sulphur_dioxide: z.array(z.number().nullable()).optional(),
-    ozone: z.array(z.number().nullable()).optional(),
-    carbon_monoxide: z.array(z.number().nullable()).optional()
-  }).optional()
+  current: z
+    .object({
+      pm2_5: z.number().nullable().optional(),
+      pm10: z.number().nullable().optional(),
+      nitrogen_dioxide: z.number().nullable().optional(),
+      sulphur_dioxide: z.number().nullable().optional(),
+      ozone: z.number().nullable().optional(),
+      carbon_monoxide: z.number().nullable().optional()
+    })
+    .optional(),
+  hourly: z
+    .object({
+      time: z.array(z.number()),
+      pm2_5: z.array(z.number().nullable()).optional(),
+      pm10: z.array(z.number().nullable()).optional(),
+      nitrogen_dioxide: z.array(z.number().nullable()).optional(),
+      sulphur_dioxide: z.array(z.number().nullable()).optional(),
+      ozone: z.array(z.number().nullable()).optional(),
+      carbon_monoxide: z.array(z.number().nullable()).optional()
+    })
+    .optional()
 });
 
+/** Zod schema validating `/api/air-quality` query parameters (either `q` search or `lat`/`lon`). */
 export const AirQualityQuerySchema = z.union([
   z.object({
     q: z.string().trim().min(2).max(80)
@@ -68,6 +80,7 @@ export const AirQualityQuerySchema = z.union([
   })
 ]);
 
+/** Zod schema validating `POST /api/assistant` request payloads. */
 export const AssistantRequestSchema = z.object({
   city: z.string().trim().min(1).max(80),
   aqi: z.number().min(0).max(500),
@@ -117,18 +130,27 @@ const routineStep = z.preprocess(
 );
 const indoorHack = z.preprocess(
   (value) => normalizeKeys(value, { cost_tier: 'costTier' }),
-  z.object({ title: z.string().trim().min(1).max(160), steps: planText, costTier: z.string().trim().min(1).max(80), impact: planText })
+  z.object({
+    title: z.string().trim().min(1).max(160),
+    steps: planText,
+    costTier: z.string().trim().min(1).max(80),
+    impact: planText
+  })
 );
 const sustainableSwap = z.preprocess(
   (value) => normalizeKeys(value, { direct_impact: 'directImpact' }),
   z.object({ swap: z.string().trim().min(1).max(240), directImpact: planText })
 );
 
+/** Zod schema validating and normalizing snake_case/camelCase LLM routine responses. */
 export const AssistantPlanOutputSchema = z.preprocess(
-  (value) => normalizeKeys(value, {
-    daily_routine: 'dailyRoutine', indoor_hacks: 'indoorHacks',
-    sustainable_swaps: 'sustainableSwaps', safety_note: 'safetyNote'
-  }),
+  (value) =>
+    normalizeKeys(value, {
+      daily_routine: 'dailyRoutine',
+      indoor_hacks: 'indoorHacks',
+      sustainable_swaps: 'sustainableSwaps',
+      safety_note: 'safetyNote'
+    }),
   z.object({
     summary: z.string().trim().min(1).max(1200),
     dailyRoutine: z.array(routineStep).min(1).max(6),
@@ -141,10 +163,12 @@ export const AssistantPlanOutputSchema = z.preprocess(
 const RATE_LIMIT_MAX_KEYS = 500;
 const rateLimitMap = new BoundedTtlCache<number>(RATE_LIMIT_MAX_KEYS);
 
+/** Clears the bounded in-memory rate-limit store (primarily for test isolation). */
 export function resetRateLimitCache(): void {
   rateLimitMap.clear();
 }
 
+/** Enforces a bounded per-key sliding/fixed TTL rate limit and reports `Retry-After` seconds. */
 export function checkRateLimit(
   clientKey: string,
   limit = 20,

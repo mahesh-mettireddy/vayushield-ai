@@ -1,0 +1,179 @@
+@media (max-width: 750px) {
+  .hero-main {
+    grid-template-columns: 1fr;
+    gap: 1.15rem;
+  }
+  .hero-reading {
+    display: grid;
+    grid-template-columns: minmax(115px, 0.62fr) minmax(0, 1fr);
+    grid-template-areas: 'city city' 'gauge status' 'gauge verdict' 'gauge pollutant';
+    gap: 0.35rem 0.85rem;
+    align-items: center;
+  }
+  .hero-reading .eyebrow {
+    grid-area: city;
+  }
+  .aqi-heading {
+    grid-area: status;
+    margin: 0;
+    align-self: end;
+  }
+  .aqi-gauge {
+    grid-area: gauge;
+    margin: 0;
+    width: min(100%, 156px);
+  }
+  .hero-verdict {
+    grid-area: verdict;
+    margin: 0;
+    max-width: 100%;
+  }
+  .dominant-reading {
+    grid-area: pollutant;
+    margin: 0;
+    align-self: start;
+  }
+  .pollutants,
+  .playbook-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .profile-fields,
+  .commute-fields {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 650px) {
+  .community-scale,
+  .room-clean-controls,
+  .room-clean-stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 520px) {
+  .page-width {
+    width: calc(100% - 1.5rem);
+  }
+  .header-inner {
+    min-height: 65px;
+    gap: 0.55rem;
+  }
+  .brand {
+    gap: 0.45rem;
+  }
+  .brand-mark {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+  }
+  .brand h1 {
+    font-size: 0.9rem;
+  }
+  .brand p,
+  .window-icon,
+  .workspace-tabs svg {
+    display: none;
+  }
+  .header-controls {
+    gap: 0.3rem;
+  }
+  .city-trigger {
+    padding-inline: 0.45rem;
+  }
+  .icon-button {
+    width: 34px;
+  }
+  .city-options {
+    width: min(350px, calc(100vw - 4rem));
+  }
+  .main-layout {
+    padding-top: 0.8rem;
+    gap: 0.8rem;
+  }
+  .habit-grid,
+  .playbook-grid,
+  .plan-disclosures,
+  .impact-results {
+    grid-template-columns: 1fr;
+  }
+  .habit-row {
+    border-radius: 13px;
+  }
+  .window-pills {
+    gap: 0.4rem;
+  }
+  .window-pill {
+    padding: 0.55rem;
+  }
+  .workspace-tabs {
+    --tab-inset: 0.25rem;
+    padding-inline: 0.25rem;
+  }
+  .workspace-tabs button {
+    min-height: 42px;
+    font-size: 0.75rem;
+    line-height: 1.2;
+    padding: 0.62rem 0.23rem;
+  }
+  .question-form,
+  .playbook-search,
+  .panel-heading {
+    flex-wrap: wrap;
+  }
+  .question-form .button-primary,
+  .playbook-search .button-primary {
+    flex: 1 0 100%;
+  }
+  .forecast-chart {
+    height: 104px;
+  }
+  .hour-metrics {
+    gap: 0.2rem 0.55rem;
+  }
+  .forecast-hour {
+    flex-shrink: 0;
+  }
+  .hour-readout {
+    padding: 0.48rem 0.56rem;
+  }
+  .hour-readout p {
+    min-height: 2.7em;
+  }
+}
+@media (max-width: 350px) {
+  .window-pills {
+    grid-template-columns: 1fr;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto !important;
+  }
+  *,
+  *::before,
+  *::after,
+  .ambient-glow,
+  .air-particle,
+  .gauge-arc,
+  .naqi-bar,
+  .hour-content,
+  .workspace-panel:not([hidden]),
+  .provider-badge[data-live='true'],
+  .skeleton-card::after,
+  .timeline li,
+  .room-curve-group,
+  .room-safe-callout {
+    animation: none !important;
+  }
+  .gauge-arc,
+  .tab-indicator,
+  .bar-column::before,
+  .naqi-bar,
+  .exposure-fill,
+  .habit-row,
+  .switch-track,
+  .switch-track::after,
+  .carbon-arc,
+  .details-arrow {
+    transition: none !important;
+  }
+}

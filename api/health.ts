@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from './_lib/httpTypes.js';
 
+/** Reports serverless endpoint health and non-secret boolean provider configuration flags. */
 export default function handler(req: VercelRequest, res: VercelResponse): void {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');

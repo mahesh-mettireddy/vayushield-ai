@@ -15,17 +15,27 @@ const MOCK_AIR: AirQualityPayload = {
     category: 'Very Poor',
     dominantPollutant: 'pm25',
     subIndices: { pm25: 335, pm10: 221, no2: 66, so2: 18, o3: 48, co: 56 },
-    advisory: 'Respiratory illness risk on prolonged exposure.',
-    badgeClass: 'bg-red-100 text-red-950 border-red-300',
-    accentHex: '#dc2626'
+    advisory: 'Respiratory illness risk on prolonged exposure.'
   },
   hourly: [
     { time: '2026-11-24T12:00', hourLabel: '12 PM', pm25: 140, pm10: 220, aqi: 316 },
     { time: '2026-11-24T13:00', hourLabel: '1 PM', pm25: 95, pm10: 170, aqi: 218 }
   ],
   windowAnalysis: {
-    bestWindow: { startLabel: '12 PM', endLabel: '2 PM', avgPm25: 117.5, avgAqi: 267, advice: 'Lowest trough.' },
-    worstWindow: { startLabel: '12 PM', endLabel: '2 PM', avgPm25: 117.5, avgAqi: 267, advice: 'Keep windows closed.' },
+    bestWindow: {
+      startLabel: '12 PM',
+      endLabel: '2 PM',
+      avgPm25: 117.5,
+      avgAqi: 267,
+      advice: 'Lowest trough.'
+    },
+    worstWindow: {
+      startLabel: '12 PM',
+      endLabel: '2 PM',
+      avgPm25: 117.5,
+      avgAqi: 267,
+      advice: 'Keep windows closed.'
+    },
     exposureSavingsPct: 0
   },
   groundStation: null
@@ -76,7 +86,9 @@ describe('Keyboard Navigation, Disclosures & RoomClean SVG Semantics', () => {
 
     await user.keyboard('{Enter}');
     const mumbaiPreset = screen.getByRole('button', { name: 'Mumbai' });
-    act(() => { mumbaiPreset.focus(); });
+    act(() => {
+      mumbaiPreset.focus();
+    });
     await user.keyboard('{Enter}');
     expect(cityTrigger).toHaveAttribute('aria-label', 'Change city: Mumbai');
     await waitFor(() => {
@@ -86,7 +98,9 @@ describe('Keyboard Navigation, Disclosures & RoomClean SVG Semantics', () => {
     const sensorTrigger = screen.getByRole('button', { name: /6 Pollutants & Sensor Details/i });
     expect(sensorTrigger).toHaveAttribute('aria-expanded', 'false');
     expect(sensorTrigger.getAttribute('aria-controls')).toBeTruthy();
-    act(() => { sensorTrigger.focus(); });
+    act(() => {
+      sensorTrigger.focus();
+    });
     await user.keyboard('{Enter}');
     expect(sensorTrigger).toHaveAttribute('aria-expanded', 'true');
 
@@ -118,11 +132,18 @@ describe('Keyboard Navigation, Disclosures & RoomClean SVG Semantics', () => {
     await user.click(screen.getByRole('tab', { name: 'Impact Lab' }));
 
     const roomSimulator = screen.getByRole('region', { name: 'Bedroom Time-to-Clean Simulator' });
-    const curveChart = within(roomSimulator).getByRole('img', { name: /Bedroom PM2\.5 decay chart/i });
+    const curveChart = within(roomSimulator).getByRole('img', {
+      name: /Bedroom PM2\.5 decay chart/i
+    });
     expect(curveChart.tagName.toLowerCase()).toBe('svg');
-    expect(curveChart).toHaveAttribute('aria-labelledby', 'room-clean-curve-title room-clean-curve-desc');
+    expect(curveChart).toHaveAttribute(
+      'aria-labelledby',
+      'room-clean-curve-title room-clean-curve-desc'
+    );
     expect(curveChart.parentElement).not.toHaveAttribute('role');
-    expect(curveChart.querySelector('#room-clean-curve-title')?.textContent).toContain('Bedroom PM2.5 decay chart');
+    expect(curveChart.querySelector('#room-clean-curve-title')?.textContent).toContain(
+      'Bedroom PM2.5 decay chart'
+    );
     expect(curveChart.querySelector('#room-clean-curve-desc')?.textContent).toContain('CPCB Good');
 
     const assertContinuousCurve = () => {
@@ -144,10 +165,37 @@ describe('Keyboard Navigation, Disclosures & RoomClean SVG Semantics', () => {
     await user.click(within(roomSimulator).getByRole('button', { name: 'Living Room' }));
     assertContinuousCurve();
     await user.click(within(roomSimulator).getByRole('button', { name: 'Windows Sealed Only' }));
-    expect(within(roomSimulator).getByText(/Sealed windows alone cannot reach 30 µg\/m³/i)).toBeVisible();
+    expect(
+      within(roomSimulator).getByText(/Sealed windows alone cannot reach 30 µg\/m³/i)
+    ).toBeVisible();
     assertContinuousCurve();
 
     const results = await axe(container, { rules: { 'color-contrast': { enabled: false } } });
     expect(results.violations).toEqual([]);
+  });
+
+  it('displays error alert when air telemetry fails and recovers on refresh', async () => {
+    const user = userEvent.setup();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
+    render(<App />);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/Live readings couldn’t load/i);
+
+    fetchSpy.mockImplementation(async (input) => {
+      if (String(input).includes('/api/air-quality')) {
+        return new Response(JSON.stringify(MOCK_AIR), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      return new Response('fallback', { status: 500 });
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Refresh air quality' }));
+    await waitFor(() => {
+      expect(screen.getByText('335')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

@@ -1,7 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { calculateCpcbAqi, calculatePollutantSubIndex } from '../engine/cpcbAqi';
+import {
+  calculateCpcbAqi,
+  calculatePollutantSubIndex,
+  getCpcbCategoryMeta,
+  toAqiBandSlug
+} from '../engine/cpcbAqi';
 
 describe('India CPCB NAQI Engine', () => {
+  it('handles non-finite and non-positive pollutant inputs safely', () => {
+    expect(calculatePollutantSubIndex('pm25', 0)).toBe(0);
+    expect(calculatePollutantSubIndex('pm25', -15)).toBe(0);
+    expect(calculatePollutantSubIndex('pm25', Number.NaN)).toBe(0);
+  });
+
+  it('maps all six CPCB categories and CSS band slugs accurately', () => {
+    expect(getCpcbCategoryMeta(40).category).toBe('Good');
+    expect(getCpcbCategoryMeta(85).category).toBe('Satisfactory');
+    expect(getCpcbCategoryMeta(150).category).toBe('Moderate');
+    expect(getCpcbCategoryMeta(250).category).toBe('Poor');
+    expect(getCpcbCategoryMeta(350).category).toBe('Very Poor');
+    expect(getCpcbCategoryMeta(450).category).toBe('Severe');
+    expect(toAqiBandSlug('Very Poor')).toBe('very-poor');
+  });
+
   it('computes Good band accurately for clean air', () => {
     const result = calculateCpcbAqi({
       pm25: 15,

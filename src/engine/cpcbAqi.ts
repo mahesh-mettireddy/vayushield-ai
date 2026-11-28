@@ -1,10 +1,43 @@
-import type { AqiCategory, CpcbAqiResult, PollutantKey, PollutantReadings } from '../types/airQuality.js';
+import type {
+  AqiCategory,
+  CpcbAqiResult,
+  PollutantKey,
+  PollutantReadings
+} from '../types/airQuality.js';
 
 interface BreakpointBand {
   bpLo: number;
   bpHi: number;
   iLo: number;
   iHi: number;
+}
+
+/** Ordered list of all six India CPCB National AQI pollutants. */
+export const POLLUTANT_KEYS: readonly PollutantKey[] = ['pm25', 'pm10', 'no2', 'so2', 'o3', 'co'];
+
+/** Ordered list of the six India CPCB National AQI health categories. */
+export const AQI_CATEGORIES: readonly AqiCategory[] = [
+  'Good',
+  'Satisfactory',
+  'Moderate',
+  'Poor',
+  'Very Poor',
+  'Severe'
+];
+
+/** Display labels and concentration units for each CPCB NAQI pollutant. */
+export const POLLUTANT_LABELS: Record<PollutantKey, { name: string; unit: string }> = {
+  pm25: { name: 'PM2.5', unit: 'µg/m³' },
+  pm10: { name: 'PM10', unit: 'µg/m³' },
+  no2: { name: 'NO₂', unit: 'µg/m³' },
+  so2: { name: 'SO₂', unit: 'µg/m³' },
+  o3: { name: 'O₃', unit: 'µg/m³' },
+  co: { name: 'CO', unit: 'mg/m³' }
+};
+
+/** Converts an AQI category name into its lowercase CSS attribute slug. */
+export function toAqiBandSlug(category: AqiCategory): string {
+  return category.toLowerCase().replace(' ', '-');
 }
 
 /**
@@ -63,17 +96,59 @@ const CPCB_BREAKPOINTS: Record<PollutantKey, BreakpointBand[]> = {
   ]
 };
 
+const CATEGORY_META_BANDS: ReadonlyArray<{
+  maxAqi: number;
+  category: AqiCategory;
+  advisory: string;
+}> = [
+  {
+    maxAqi: 50,
+    category: 'Good',
+    advisory:
+      'Minimal health impact. Great time for outdoor exercise and natural cross-ventilation.'
+  },
+  {
+    maxAqi: 100,
+    category: 'Satisfactory',
+    advisory:
+      'Minor breathing discomfort to sensitive people. Normal outdoor routines are generally safe.'
+  },
+  {
+    maxAqi: 200,
+    category: 'Moderate',
+    advisory:
+      'Breathing discomfort for people with asthma, children, and older adults. Shift errands to the cleanest 2-hour window.'
+  },
+  {
+    maxAqi: 300,
+    category: 'Poor',
+    advisory:
+      'Breathing discomfort on prolonged exposure. Limit strenuous outdoor exertion, run indoor filtration, and mask outdoors.'
+  },
+  {
+    maxAqi: 400,
+    category: 'Very Poor',
+    advisory:
+      'Respiratory illness risk on prolonged exposure. Keep windows sealed during peak smog, use N95 outdoors, and avoid solo car trips.'
+  }
+];
+
+const SEVERE_META: { category: AqiCategory; advisory: string } = {
+  category: 'Severe',
+  advisory:
+    'Health impact even on healthy individuals. Stay indoors with filtration, avoid outdoor workouts, and postpone non-essential travel.'
+};
+
+/** Computes the continuous India CPCB NAQI sub-index (0–500) for a single pollutant reading. */
 export function calculatePollutantSubIndex(pollutant: PollutantKey, concentration: number): number {
   if (!Number.isFinite(concentration) || concentration <= 0) {
     return 0;
   }
 
-  const bands = CPCB_BREAKPOINTS[pollutant];
-  for (const band of bands) {
+  for (const band of CPCB_BREAKPOINTS[pollutant]) {
     if (concentration <= band.bpHi) {
-      const span = band.bpHi - band.bpLo;
-      if (span <= 0) return band.iLo;
-      const interpolated = ((band.iHi - band.iLo) / span) * (concentration - band.bpLo) + band.iLo;
+      const interpolated =
+        ((band.iHi - band.iLo) / (band.bpHi - band.bpLo)) * (concentration - band.bpLo) + band.iLo;
       return Math.min(500, Math.max(0, Math.round(interpolated)));
     }
   }
@@ -81,60 +156,13 @@ export function calculatePollutantSubIndex(pollutant: PollutantKey, concentratio
   return 500;
 }
 
-export function getCpcbCategoryMeta(aqi: number): {
-  category: AqiCategory;
-  advisory: string;
-  badgeClass: string;
-  accentHex: string;
-} {
-  if (aqi <= 50) {
-    return {
-      category: 'Good',
-      advisory: 'Minimal health impact. Great time for outdoor exercise and natural cross-ventilation.',
-      badgeClass: 'bg-emerald-100 text-emerald-900 border-emerald-300',
-      accentHex: '#059669'
-    };
-  }
-  if (aqi <= 100) {
-    return {
-      category: 'Satisfactory',
-      advisory: 'Minor breathing discomfort to sensitive people. Normal outdoor routines are generally safe.',
-      badgeClass: 'bg-lime-100 text-lime-900 border-lime-300',
-      accentHex: '#65a30d'
-    };
-  }
-  if (aqi <= 200) {
-    return {
-      category: 'Moderate',
-      advisory: 'Breathing discomfort for people with asthma, children, and older adults. Shift errands to the cleanest 2-hour window.',
-      badgeClass: 'bg-amber-100 text-amber-950 border-amber-300',
-      accentHex: '#d97706'
-    };
-  }
-  if (aqi <= 300) {
-    return {
-      category: 'Poor',
-      advisory: 'Breathing discomfort on prolonged exposure. Limit strenuous outdoor exertion, run indoor filtration, and mask outdoors.',
-      badgeClass: 'bg-orange-100 text-orange-950 border-orange-300',
-      accentHex: '#ea580c'
-    };
-  }
-  if (aqi <= 400) {
-    return {
-      category: 'Very Poor',
-      advisory: 'Respiratory illness risk on prolonged exposure. Keep windows sealed during peak smog, use N95 outdoors, and avoid solo car trips.',
-      badgeClass: 'bg-red-100 text-red-950 border-red-300',
-      accentHex: '#dc2626'
-    };
-  }
-  return {
-    category: 'Severe',
-    advisory: 'Health impact even on healthy individuals. Stay indoors with filtration, avoid outdoor workouts, and postpone non-essential travel.',
-    badgeClass: 'bg-rose-950 text-white border-rose-800',
-    accentHex: '#881337'
-  };
+/** Maps a CPCB NAQI score (0–500) to its health category label and advisory message. */
+export function getCpcbCategoryMeta(aqi: number): { category: AqiCategory; advisory: string } {
+  const matched = CATEGORY_META_BANDS.find((band) => aqi <= band.maxAqi);
+  return matched ? { category: matched.category, advisory: matched.advisory } : SEVERE_META;
 }
 
+/** Computes overall India CPCB NAQI, dominant pollutant, sub-indices, and health advisory. */
 export function calculateCpcbAqi(readings: PollutantReadings): CpcbAqiResult {
   // Convert raw Open-Meteo CO (µg/m³) to CPCB NAQI unit (mg/m³)
   const coMgM3 = Math.max(0, readings.coUgM3) / 1000;
@@ -150,9 +178,8 @@ export function calculateCpcbAqi(readings: PollutantReadings): CpcbAqiResult {
 
   let dominantPollutant: PollutantKey = 'pm25';
   let maxAqi = -1;
-  const pollutantOrder: readonly PollutantKey[] = ['pm25', 'pm10', 'no2', 'so2', 'o3', 'co'];
 
-  for (const key of pollutantOrder) {
+  for (const key of POLLUTANT_KEYS) {
     const score = subIndices[key];
     if (score > maxAqi) {
       maxAqi = score;
@@ -168,17 +195,6 @@ export function calculateCpcbAqi(readings: PollutantReadings): CpcbAqiResult {
     category: meta.category,
     dominantPollutant,
     subIndices,
-    advisory: meta.advisory,
-    badgeClass: meta.badgeClass,
-    accentHex: meta.accentHex
+    advisory: meta.advisory
   };
 }
-
-export const POLLUTANT_LABELS: Record<PollutantKey, { name: string; unit: string }> = {
-  pm25: { name: 'PM2.5', unit: 'µg/m³' },
-  pm10: { name: 'PM10', unit: 'µg/m³' },
-  no2: { name: 'NO₂', unit: 'µg/m³' },
-  so2: { name: 'SO₂', unit: 'µg/m³' },
-  o3: { name: 'O₃', unit: 'µg/m³' },
-  co: { name: 'CO', unit: 'mg/m³' }
-};

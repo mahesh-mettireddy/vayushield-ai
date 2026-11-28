@@ -37,10 +37,12 @@ describe('ErrorBoundary', () => {
     function Wrapper() {
       const [broken, setBroken] = useState(true);
       return (
-        <ErrorBoundary onReset={() => {
-          onReset();
-          setBroken(false);
-        }}>
+        <ErrorBoundary
+          onReset={() => {
+            onReset();
+            setBroken(false);
+          }}
+        >
           <ExplodingView shouldThrow={broken} />
         </ErrorBoundary>
       );

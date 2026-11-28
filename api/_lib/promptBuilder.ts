@@ -6,6 +6,7 @@ function findCommuteLabel(mode: string): string | undefined {
   return Object.entries(COMMUTE_LABELS).find(([key]) => key === mode)?.[1];
 }
 
+/** Resolves safe human-readable baseline and target commute labels from an assistant request profile. */
 export function resolveCommuteLabels(profile: AssistantRequest['profile']): {
   baselineCommuteLabel: string;
   chosenCommuteLabel: string;
@@ -22,10 +23,21 @@ export function resolveCommuteLabels(profile: AssistantRequest['profile']): {
   };
 }
 
+function sanitizeList(items: ReadonlyArray<string>, maxLength: number): string[] {
+  return items.map((item) => sanitizeUserText(item, maxLength)).filter(Boolean);
+}
+
+/** Constructs sanitized system and user JSON prompts for the upstream LLM planner. */
 export function buildPrompts(req: AssistantRequest): { system: string; user: string } {
   const safeCity = sanitizeUserText(req.city, 80);
+  const safeCategory = sanitizeUserText(req.category, 32);
+  const safeDominant = sanitizeUserText(req.dominantPollutant, 16);
+  const safeBestWindow = sanitizeUserText(req.bestWindowLabel, 40);
+  const safeWorstWindow = sanitizeUserText(req.worstWindowLabel, 40);
+  const safeMembers = sanitizeList(req.profile.householdMembers, 40);
+  const safeChoices = sanitizeList(req.activeChoices, 80);
   const safeQuestion = req.userQuestion ? sanitizeUserText(req.userQuestion, 240) : '';
-  const { householdMembers, commuteKm, homeType, budgetTier } = req.profile;
+  const { commuteKm, homeType, budgetTier } = req.profile;
 
   const system = [
     'You are VayuShield AI, a grounded urban air quality advisor helping families navigate severe smog and urban air pollution.',
@@ -41,35 +53,44 @@ export function buildPrompts(req: AssistantRequest): { system: string; user: str
     location: safeCity,
     telemetry: {
       cpcbNaqi: req.aqi,
-      category: req.category,
-      dominantPollutant: req.dominantPollutant,
+      category: safeCategory,
+      dominantPollutant: safeDominant,
       pm25UgM3: req.pm25,
       pm10UgM3: req.pm10,
-      cleanest2HourWindow: req.bestWindowLabel,
-      worst2HourWindow: req.worstWindowLabel,
+      cleanest2HourWindow: safeBestWindow,
+      worst2HourWindow: safeWorstWindow,
       worst2HourAverageNaqi: req.worstWindowAqi
     },
-    household: { householdMembers, commuteKm, homeType, budgetTier, ...resolveCommuteLabels(req.profile) },
-    activeChoices: req.activeChoices,
+    household: {
+      householdMembers: safeMembers,
+      commuteKm,
+      homeType,
+      budgetTier,
+      ...resolveCommuteLabels(req.profile)
+    },
+    activeChoices: safeChoices,
     computedChoiceImpact: req.impactSummary,
-    specificQuestion: safeQuestion || 'Create today’s low-emission routine, indoor air hacks, and sustainable swaps.'
+    specificQuestion:
+      safeQuestion ||
+      'Create today’s low-emission routine, indoor air hacks, and sustainable swaps.'
   });
 
   return { system, user };
 }
 
+/** Maps a sanitized `AssistantRequest` into inputs for the deterministic fallback routine engine. */
 export function buildFallbackInput(req: AssistantRequest): DeterministicPlanInput {
   return {
     city: sanitizeUserText(req.city, 80),
     aqi: req.aqi,
-    category: req.category,
-    dominantPollutant: req.dominantPollutant,
+    category: sanitizeUserText(req.category, 32),
+    dominantPollutant: sanitizeUserText(req.dominantPollutant, 16),
     pm25: req.pm25,
     pm10: req.pm10,
-    bestWindowLabel: req.bestWindowLabel,
-    worstWindowLabel: req.worstWindowLabel,
+    bestWindowLabel: sanitizeUserText(req.bestWindowLabel, 40),
+    worstWindowLabel: sanitizeUserText(req.worstWindowLabel, 40),
     worstWindowAqi: req.worstWindowAqi ?? req.aqi,
-    householdMembers: req.profile.householdMembers,
+    householdMembers: sanitizeList(req.profile.householdMembers, 40),
     ...resolveCommuteLabels(req.profile),
     budgetTier: req.profile.budgetTier,
     exposureReductionPct: req.impactSummary.exposureReductionPct,

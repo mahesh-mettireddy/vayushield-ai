@@ -17,11 +17,13 @@ export class BoundedTtlCache<V> {
     this.now = now;
   }
 
+  /** Returns the current number of active, non-expired entries. */
   get size(): number {
     this.purgeExpired(this.now());
     return this.entries.size;
   }
 
+  /** Retrieves a non-expired cache entry and refreshes its LRU recency. */
   getEntry(key: string): CacheEntry<V> | undefined {
     const existing = this.entries.get(key);
     if (!existing) return undefined;
@@ -37,10 +39,12 @@ export class BoundedTtlCache<V> {
     return existing;
   }
 
+  /** Retrieves a non-expired cached value by key, or `undefined` if missing/expired. */
   get(key: string): V | undefined {
     return this.getEntry(key)?.value;
   }
 
+  /** Stores a value until `expiresAt`, evicting expired then oldest-used keys when full. */
   set(key: string, value: V, expiresAt: number): void {
     const currentNow = this.now();
     if (currentNow >= expiresAt) {
@@ -62,10 +66,12 @@ export class BoundedTtlCache<V> {
     this.entries.set(key, { value, expiresAt });
   }
 
+  /** Removes a single entry by key if present. */
   delete(key: string): boolean {
     return this.entries.delete(key);
   }
 
+  /** Removes all cached entries. */
   clear(): void {
     this.entries.clear();
   }

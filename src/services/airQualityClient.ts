@@ -1,7 +1,11 @@
-import { analyzeCleanAirWindows } from '../engine/cleanAirWindow';
+import { analyzeCleanAirWindows, formatWindowRange } from '../engine/cleanAirWindow';
 import { buildDeterministicPlan } from '../engine/deterministicFallback';
 import { COMMUTE_LABELS } from '../engine/impactCalculator';
-import { readOpenMeteoForecast } from '../engine/openMeteoForecast';
+import {
+  buildOpenMeteoAirUrl,
+  buildOpenMeteoGeoUrl,
+  readOpenMeteoForecast
+} from '../engine/openMeteoForecast';
 import type {
   AirQualityPayload,
   AssistantPlan,
@@ -18,14 +22,7 @@ import {
 } from './airQualitySchemas';
 
 async function fetchOpenMeteoDirect(loc: LocationOption): Promise<AirQualityPayload> {
-  const omUrl =
-    `https://air-quality-api.open-meteo.com/v1/air-quality` +
-    `?latitude=${loc.lat.toFixed(4)}&longitude=${loc.lon.toFixed(4)}` +
-    `&current=pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,sulphur_dioxide,ozone` +
-    `&hourly=pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,sulphur_dioxide,ozone` +
-    `&forecast_days=2&timezone=auto&timeformat=unixtime`;
-
-  const res = await fetch(omUrl);
+  const res = await fetch(buildOpenMeteoAirUrl(loc.lat, loc.lon));
   if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`);
 
   const omData = parseOpenMeteoAirData(await res.json());
@@ -43,6 +40,7 @@ async function fetchOpenMeteoDirect(loc: LocationOption): Promise<AirQualityPayl
   };
 }
 
+/** Searches matching cities via `/api/air-quality` with direct Open-Meteo Geocoding fallback. */
 export async function searchLocations(query: string): Promise<LocationOption[]> {
   const clean = query.trim();
   if (clean.length < 2) return [];
@@ -57,13 +55,12 @@ export async function searchLocations(query: string): Promise<LocationOption[]> 
     // Fall back to direct Open-Meteo Geocoding when running pure `vite dev`
   }
 
-  const direct = await fetch(
-    `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(clean)}&count=6&language=en&format=json`
-  );
+  const direct = await fetch(buildOpenMeteoGeoUrl(clean));
   if (!direct.ok) return [];
   return parseOpenMeteoGeoResults(await direct.json());
 }
 
+/** Fetches live AQI and 24-hour forecast telemetry, falling back directly to Open-Meteo offline/locally. */
 export async function fetchAirQuality(loc: LocationOption): Promise<AirQualityPayload> {
   try {
     const params = new URLSearchParams({
@@ -85,6 +82,7 @@ export async function fetchAirQuality(loc: LocationOption): Promise<AirQualityPa
   return fetchOpenMeteoDirect(loc);
 }
 
+/** Requests a personalized routine plan from `/api/assistant` with deterministic local fallback. */
 export async function requestAssistantPlan(params: {
   air: AirQualityPayload;
   profile: HouseholdProfile;
@@ -93,10 +91,8 @@ export async function requestAssistantPlan(params: {
   userQuestion: string;
 }): Promise<AssistantPlan> {
   const { air, profile, impact, activeChoices, userQuestion } = params;
-  const labelFor = ({ startLabel, endLabel }: { startLabel: string; endLabel: string }) =>
-    startLabel === 'Unavailable' ? startLabel : `${startLabel} – ${endLabel}`;
-  const bestWindowLabel = labelFor(air.windowAnalysis.bestWindow);
-  const worstWindowLabel = labelFor(air.windowAnalysis.worstWindow);
+  const bestWindowLabel = formatWindowRange(air.windowAnalysis.bestWindow);
+  const worstWindowLabel = formatWindowRange(air.windowAnalysis.worstWindow);
   const worstWindowAqi = air.windowAnalysis.worstWindow.avgAqi;
   const commuteLabels = {
     baselineCommuteLabel: COMMUTE_LABELS[profile.baselineCommute],

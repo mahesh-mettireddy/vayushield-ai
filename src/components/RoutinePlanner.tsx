@@ -1,4 +1,4 @@
-import { useId, useState, type CSSProperties } from 'react';
+import { useId, useState } from 'react';
 import { ArrowUpRight, CalendarDays, ChevronDown, Leaf, Lightbulb, Sparkles } from 'lucide-react';
 import type { AssistantPlan, BudgetTier, HouseholdProfile } from '../types/airQuality';
 
@@ -8,9 +8,20 @@ const BUDGETS: Array<{ value: BudgetTier; label: string }> = [
   { value: 'budget_diy', label: 'Budget DIY' },
   { value: 'standard', label: 'Standard' }
 ];
+const PROVIDER_BADGE_LABELS: Record<AssistantPlan['provider'], string> = {
+  gemini: '',
+  huggingface: 'Hugging Face Router',
+  groq: 'Groq',
+  'deterministic-fallback': 'Built-in planner'
+};
 
+/** Formats snake_case/kebab-case cost tier identifiers into readable display labels. */
 export function formatCostTier(value: string): string {
-  const words = value.trim().toLowerCase().split(/[\s_-]+/).filter(Boolean);
+  const words = value
+    .trim()
+    .toLowerCase()
+    .split(/[\s_-]+/)
+    .filter(Boolean);
   if (words.join(' ') === 'budget diy') return 'Budget DIY';
   return words.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 }
@@ -24,12 +35,70 @@ interface RoutinePlannerProps {
   onGenerate: (question: string) => Promise<void>;
 }
 
-export function RoutinePlanner({ profile, plan, loading, ready, onProfileChange, onGenerate }: RoutinePlannerProps) {
-  const [question, setQuestion] = useState('');
+function PlanDisclosures({ plan }: { plan: AssistantPlan }) {
   const [hacksOpen, setHacksOpen] = useState(false);
   const [swapsOpen, setSwapsOpen] = useState(false);
   const hacksPanelId = useId();
   const swapsPanelId = useId();
+  return (
+    <div className="plan-disclosures items-start">
+      <div className="disclosure-card">
+        <button
+          type="button"
+          className="disclosure-trigger"
+          aria-expanded={hacksOpen}
+          aria-controls={hacksPanelId}
+          onClick={() => setHacksOpen((open) => !open)}
+        >
+          <Lightbulb size={18} aria-hidden="true" /> Indoor air hacks
+          <ChevronDown size={17} aria-hidden="true" className="details-arrow" />
+        </button>
+        <ul id={hacksPanelId} hidden={!hacksOpen}>
+          {plan.indoorHacks.map((hack, i) => (
+            <li key={hack.title + i}>
+              <h4>{hack.title}</h4>
+              <p>{hack.steps}</p>
+              <p className="muted">
+                {formatCostTier(hack.costTier)} · {hack.impact}
+              </p>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="disclosure-card">
+        <button
+          type="button"
+          className="disclosure-trigger"
+          aria-expanded={swapsOpen}
+          aria-controls={swapsPanelId}
+          onClick={() => setSwapsOpen((open) => !open)}
+        >
+          <Leaf size={18} aria-hidden="true" /> Sustainable swaps
+          <ChevronDown size={17} aria-hidden="true" className="details-arrow" />
+        </button>
+        <ul id={swapsPanelId} hidden={!swapsOpen}>
+          {plan.sustainableSwaps.map((swap, i) => (
+            <li key={swap.swap + i}>
+              <h4>{swap.swap}</h4>
+              <p>{swap.directImpact}</p>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+/** Interactive household planner generating grounded AI schedules or deterministic fallback plans. */
+export function RoutinePlanner({
+  profile,
+  plan,
+  loading,
+  ready,
+  onProfileChange,
+  onGenerate
+}: RoutinePlannerProps) {
+  const [question, setQuestion] = useState('');
 
   function toggleMember(member: string) {
     const householdMembers = profile.householdMembers.includes(member)
@@ -41,19 +110,44 @@ export function RoutinePlanner({ profile, plan, loading, ready, onProfileChange,
   return (
     <div>
       <div className="panel-heading">
-        <div><h2>Plan your day</h2><p>Get a routine based on your city’s air quality and household needs.</p></div>
-        {plan && !loading && <span className="provider-badge" data-live={plan.provider !== 'deterministic-fallback'}
-          title={plan.modelLabel} role="status"><Sparkles size={15} aria-hidden="true" />
-          {({ gemini: plan.modelLabel, huggingface: 'Hugging Face Router', groq: 'Groq',
-            'deterministic-fallback': 'Built-in planner' })[plan.provider]}</span>}
+        <div>
+          <h2>Plan your day</h2>
+          <p>Get a routine based on your city’s air quality and household needs.</p>
+        </div>
+        {plan && !loading && (
+          <span
+            className="provider-badge"
+            data-live={plan.provider !== 'deterministic-fallback'}
+            title={plan.modelLabel}
+            role="status"
+          >
+            <Sparkles size={15} aria-hidden="true" />
+            {plan.provider === 'gemini' ? plan.modelLabel : PROVIDER_BADGE_LABELS[plan.provider]}
+          </span>
+        )}
       </div>
-      <form className="plan-form" onSubmit={(event) => { event.preventDefault(); void onGenerate(question); }}>
+      <form
+        className="plan-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void onGenerate(question);
+        }}
+      >
         <div className="profile-fields">
           <fieldset>
             <legend>Household</legend>
             <div className="pill-row">
-              {MEMBERS.map((member) => <button key={member} type="button" className="pill"
-                aria-pressed={profile.householdMembers.includes(member)} onClick={() => toggleMember(member)}>{member}</button>)}
+              {MEMBERS.map((member) => (
+                <button
+                  key={member}
+                  type="button"
+                  className="pill"
+                  aria-pressed={profile.householdMembers.includes(member)}
+                  onClick={() => toggleMember(member)}
+                >
+                  {member}
+                </button>
+              ))}
             </div>
           </fieldset>
           <fieldset>
@@ -61,8 +155,13 @@ export function RoutinePlanner({ profile, plan, loading, ready, onProfileChange,
             <div className="pill-row">
               {BUDGETS.map(({ value, label }) => (
                 <label key={value} className="radio-pill">
-                  <input type="radio" name="budget" value={value} checked={profile.budgetTier === value}
-                    onChange={() => onProfileChange({ ...profile, budgetTier: value })} />
+                  <input
+                    type="radio"
+                    name="budget"
+                    value={value}
+                    checked={profile.budgetTier === value}
+                    onChange={() => onProfileChange({ ...profile, budgetTier: value })}
+                  />
                   <span>{label}</span>
                 </label>
               ))}
@@ -70,68 +169,57 @@ export function RoutinePlanner({ profile, plan, loading, ready, onProfileChange,
           </fieldset>
         </div>
         <div className="inline-form question-form">
-          <label htmlFor="plan-question" className="sr-only">Optional question for the planner</label>
-          <input type="text" id="plan-question" value={question} maxLength={300}
-            onChange={(event) => setQuestion(event.target.value)} placeholder="Optional: When should we go for a walk?" />
+          <label htmlFor="plan-question" className="sr-only">
+            Optional question for the planner
+          </label>
+          <input
+            type="text"
+            id="plan-question"
+            value={question}
+            maxLength={300}
+            onChange={(event) => setQuestion(event.target.value)}
+            placeholder="Optional: When should we go for a walk?"
+          />
           <button type="submit" className="button-primary" disabled={loading || !ready}>
-            {loading ? 'Generating…' : 'Generate AI Routine'}<ArrowUpRight size={17} aria-hidden="true" />
+            {loading ? 'Generating…' : 'Generate AI Routine'}
+            <ArrowUpRight size={17} aria-hidden="true" />
           </button>
         </div>
       </form>
 
-      {loading && <div className="plan-loading">
-        <p role="status"><Sparkles size={16} aria-hidden="true" /> Preparing your daily plan…</p>
-        <div className="skeleton-cards" aria-hidden="true">
-          {[0, 1, 2].map((i) => <div className="skeleton-card" key={i}><i /><i /><i /></div>)}
+      {loading && (
+        <div className="plan-loading">
+          <p role="status">
+            <Sparkles size={16} aria-hidden="true" /> Preparing your daily plan…
+          </p>
+          <div className="skeleton-cards" aria-hidden="true">
+            {[0, 1, 2].map((i) => (
+              <div className="skeleton-card" key={i}>
+                <i />
+                <i />
+                <i />
+              </div>
+            ))}
+          </div>
         </div>
-      </div>}
+      )}
 
       {plan && !loading && (
         <div className="plan-result" aria-live="polite">
           <p className="plan-summary">{plan.summary}</p>
-          <h3><CalendarDays size={18} aria-hidden="true" /> Today’s low-emission schedule</h3>
+          <h3>
+            <CalendarDays size={18} aria-hidden="true" /> Today’s low-emission schedule
+          </h3>
           <ol className="timeline">
-            {plan.dailyRoutine.map((step, i) => <li key={step.timeBlock + i}
-              style={{ '--entry-delay': i * 80 + 'ms' } as CSSProperties}>
-              <h4>{step.timeBlock}</h4><p>{step.action}</p><p className="muted">{step.whyItHelps}</p>
-            </li>)}
+            {plan.dailyRoutine.map((step, i) => (
+              <li key={step.timeBlock + i}>
+                <h4>{step.timeBlock}</h4>
+                <p>{step.action}</p>
+                <p className="muted">{step.whyItHelps}</p>
+              </li>
+            ))}
           </ol>
-          <div className="plan-disclosures items-start">
-            <div className="disclosure-card">
-              <button
-                type="button"
-                className="disclosure-trigger"
-                aria-expanded={hacksOpen}
-                aria-controls={hacksPanelId}
-                onClick={() => setHacksOpen((open) => !open)}
-              >
-                <Lightbulb size={18} aria-hidden="true" /> Indoor air hacks
-                <ChevronDown size={17} aria-hidden="true" className="details-arrow" />
-              </button>
-              <ul id={hacksPanelId} hidden={!hacksOpen}>
-                {plan.indoorHacks.map((hack, i) => <li key={hack.title + i}>
-                  <h4>{hack.title}</h4><p>{hack.steps}</p><p className="muted">{formatCostTier(hack.costTier)} · {hack.impact}</p>
-                </li>)}
-              </ul>
-            </div>
-            <div className="disclosure-card">
-              <button
-                type="button"
-                className="disclosure-trigger"
-                aria-expanded={swapsOpen}
-                aria-controls={swapsPanelId}
-                onClick={() => setSwapsOpen((open) => !open)}
-              >
-                <Leaf size={18} aria-hidden="true" /> Sustainable swaps
-                <ChevronDown size={17} aria-hidden="true" className="details-arrow" />
-              </button>
-              <ul id={swapsPanelId} hidden={!swapsOpen}>
-                {plan.sustainableSwaps.map((swap, i) => <li key={swap.swap + i}>
-                  <h4>{swap.swap}</h4><p>{swap.directImpact}</p>
-                </li>)}
-              </ul>
-            </div>
-          </div>
+          <PlanDisclosures plan={plan} />
           <p className="safety-note">{plan.safetyNote}</p>
         </div>
       )}

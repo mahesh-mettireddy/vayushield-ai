@@ -40,7 +40,8 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         <section className="error-boundary" role="alert" aria-labelledby="error-boundary-heading">
           <h1 id="error-boundary-heading">Something went wrong</h1>
           <p>
-            VayuShield AI ran into an unexpected display error. You can retry rendering the dashboard or reload the page.
+            VayuShield AI ran into an unexpected display error. You can retry rendering the
+            dashboard or reload the page.
           </p>
           <div className="error-boundary-actions">
             <button type="button" className="button-primary" onClick={this.handleRetry}>

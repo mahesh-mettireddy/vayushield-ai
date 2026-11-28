@@ -1,0 +1,110 @@
+.city-picker {
+  position: relative;
+  min-width: 0;
+}
+.city-trigger,
+.icon-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 41px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--white);
+  color: var(--ink);
+}
+.city-trigger {
+  max-width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.city-trigger span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.city-trigger svg {
+  color: var(--teal);
+  flex: none;
+}
+.icon-button {
+  justify-content: center;
+  width: 41px;
+  flex: none;
+  color: var(--teal);
+}
+.city-trigger:hover,
+.icon-button:hover {
+  background: var(--soft);
+}
+.city-options {
+  position: absolute;
+  z-index: 4;
+  inset: calc(100% + 10px) 0 auto auto;
+  width: min(395px, calc(100vw - 5rem));
+  padding: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: var(--white);
+  box-shadow: 0 14px 44px #193b2e26;
+}
+.city-presets,
+.pill-row {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+.city-presets {
+  margin-top: 0.85rem;
+}
+.city-results {
+  margin-top: 0.5rem;
+  border-block: 1px solid var(--line);
+}
+.city-results button {
+  display: flex;
+  width: 100%;
+  gap: 0.25rem;
+  align-items: flex-start;
+  flex-direction: column;
+  padding: 0.4rem 0.25rem;
+  text-align: left;
+  font-size: 0.83rem;
+}
+.city-results button:hover {
+  background: var(--soft);
+}
+.city-results span,
+.field-feedback {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.field-feedback {
+  margin-top: 0.55rem;
+}
+.location-action {
+  margin-top: 0.7rem;
+  padding: 0.35rem;
+  color: var(--teal);
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+
+.main-layout {
+  display: grid;
+  gap: 1.35rem;
+  padding-block: 1.55rem 2rem;
+}
+.notice {
+  border-radius: 10px;
+  background: #fff5ed;
+  border: 1px solid #e6c9af;
+  color: #744324;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.86rem;
+}

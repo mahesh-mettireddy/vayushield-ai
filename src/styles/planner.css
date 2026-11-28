@@ -1,0 +1,90 @@
+.plan-result {
+  margin-top: 1.35rem;
+}
+.plan-summary {
+  padding: 0.85rem 1rem;
+  background: var(--soft);
+  border-radius: 10px;
+  font-size: 0.9rem;
+}
+.plan-result h3 {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+  font-size: 1rem;
+  font-weight: 750;
+  margin-top: 1.2rem;
+}
+.plan-result h3 svg {
+  color: var(--teal);
+}
+.timeline {
+  margin: 0.85rem 0 1rem 0.45rem;
+  border-left: 1px solid #bfd7ce;
+  padding-left: 1.05rem;
+}
+.timeline li {
+  position: relative;
+  margin-bottom: 0.8rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #f7fbf8;
+  animation: panel-enter 300ms ease-out var(--entry-delay, 0ms) both;
+}
+.timeline li:nth-child(2) {
+  --entry-delay: 80ms;
+}
+.timeline li:nth-child(3) {
+  --entry-delay: 160ms;
+}
+.timeline li:nth-child(4) {
+  --entry-delay: 240ms;
+}
+.timeline li:nth-child(5) {
+  --entry-delay: 320ms;
+}
+.timeline li:nth-child(6) {
+  --entry-delay: 400ms;
+}
+.timeline li::before {
+  position: absolute;
+  content: '';
+  width: 9px;
+  height: 9px;
+  border: 2px solid #2c7a65;
+  border-radius: 50%;
+  background: #fff;
+  top: 0.9rem;
+  left: calc(-1.05rem - 5px);
+}
+.plan-result h4 {
+  font-size: 0.89rem;
+  font-weight: 750;
+}
+.plan-result li p {
+  font-size: 0.85rem;
+  line-height: 1.45;
+  margin-top: 0.15rem;
+}
+.plan-disclosures {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+.plan-disclosures .disclosure-card,
+.impact-breakdown {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.7rem 0.8rem;
+}
+.plan-disclosures ul,
+.impact-breakdown ul {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.5rem;
+}
+.safety-note {
+  margin-top: 0.8rem;
+  font-size: 0.78rem;
+}

@@ -79,5 +79,23 @@ describe('semanticPlaybook service', () => {
     await expect(rankPlaybookWithLocalHf('purifier', CURATED_PLAYBOOK)).rejects.toThrow(
       'Unexpected feature tensor shape from local embedding model.'
     );
+
+    resetSemanticExtractorCache();
+    mockPipeline.mockResolvedValueOnce(async () => null);
+    await expect(rankPlaybookWithLocalHf('purifier', CURATED_PLAYBOOK)).rejects.toThrow(
+      'Unexpected feature tensor shape from local embedding model.'
+    );
+  });
+
+  it('handles zero-norm vectors and ArrayLike/number[] tensor outputs safely', async () => {
+    mockPipeline.mockResolvedValueOnce(async (text: string) =>
+      text.includes('zero') ? { data: [0, 0] } : { data: { 0: -1, 1: 0, length: 2 } }
+    );
+
+    const zeroRanked = await rankPlaybookWithLocalHf('zero', CURATED_PLAYBOOK);
+    expect(zeroRanked[0]?.score).toBe(0);
+
+    const arrayLikeRanked = await rankPlaybookWithLocalHf('mask', CURATED_PLAYBOOK);
+    expect(arrayLikeRanked.every((item) => item.score >= 0)).toBe(true);
   });
 });

@@ -97,4 +97,18 @@ describe('Bedroom Time-to-Clean ACH Physics Engine', () => {
     expect(Number.isFinite(invalid.startPm25)).toBe(true);
     expect(invalid.minutesToSafe).toBeGreaterThan(0);
   });
+
+  it('covers sealed-room safe convergence, 1-minute singular wording, and severe purifier equilibrium', () => {
+    const sealedConverges = simulateRoomCleanTime(42, 'small_bedroom', 'sealed_only');
+    expect(sealedConverges.minutesToSafe).toBeGreaterThan(0);
+    expect(sealedConverges.headline).toMatch(/^Keep windows sealed for \d+ minutes?/);
+
+    const oneMinute = simulateRoomCleanTime(40, 'small_bedroom', 'corsi_rosenthal');
+    expect(oneMinute.minutesToSafe).toBe(1);
+    expect(oneMinute.headline).toContain('1 minute before bedtime');
+
+    const staysElevated = simulateRoomCleanTime(250, 'living_room', 'true_hepa');
+    expect(staysElevated.minutesToSafe).toBeNull();
+    expect(staysElevated.headline).toContain('seal window gaps or add airflow');
+  });
 });

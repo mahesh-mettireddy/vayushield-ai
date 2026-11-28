@@ -7,6 +7,7 @@ import type {
   RoomSizePreset
 } from '../types/airQuality.js';
 
+/** India CPCB Good 24h PM2.5 threshold (µg/m³). */
 export const CPCB_GOOD_PM25_CAP = 30;
 const HORIZON_MINUTES = 120;
 const SAMPLE_STEP_MINUTES = 10;
@@ -18,6 +19,7 @@ function round1(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
+/** Room geometry presets assuming a standard 9 ft ceiling. */
 export const ROOM_SIZE_PRESETS: Record<RoomSizeId, RoomSizePreset> = {
   small_bedroom: {
     id: 'small_bedroom',
@@ -48,6 +50,7 @@ export const ROOM_SIZE_PRESETS: Record<RoomSizeId, RoomSizePreset> = {
   }
 };
 
+/** Clean-air delivery rate (CADR) and infiltration presets for bedroom air cleaning. */
 export const FILTRATION_PRESETS: Record<FiltrationSetupId, FiltrationPreset> = {
   sealed_only: {
     id: 'sealed_only',
@@ -75,12 +78,14 @@ export const FILTRATION_PRESETS: Record<FiltrationSetupId, FiltrationPreset> = {
   }
 };
 
+/** Ordered room size presets for UI selector pills. */
 export const ROOM_SIZE_LIST: RoomSizePreset[] = [
   ROOM_SIZE_PRESETS.small_bedroom,
   ROOM_SIZE_PRESETS.master_bedroom,
   ROOM_SIZE_PRESETS.living_room
 ];
 
+/** Ordered filtration setup presets for UI selector pills. */
 export const FILTRATION_LIST: FiltrationPreset[] = [
   FILTRATION_PRESETS.sealed_only,
   FILTRATION_PRESETS.corsi_rosenthal,
@@ -98,7 +103,10 @@ function evaluateIndoorPm25AtMinute(
   minute: number
 ): number {
   const clampedMinute = Math.max(0, minute);
-  return equilibriumPm25Raw + (startPm25Raw - equilibriumPm25Raw) * Math.exp(-totalAch * (clampedMinute / 60));
+  return (
+    equilibriumPm25Raw +
+    (startPm25Raw - equilibriumPm25Raw) * Math.exp(-totalAch * (clampedMinute / 60))
+  );
 }
 
 function resolvePhysicsParameters(
@@ -177,11 +185,16 @@ export function simulateRoomCleanTime(
   roomId: RoomSizeId,
   filtrationId: FiltrationSetupId
 ): RoomCleanSimulation {
-  const { room, filtration, safeAmbient, c0, totalAch, cEq } = resolvePhysicsParameters(ambientPm25, roomId, filtrationId);
+  const { room, filtration, safeAmbient, c0, totalAch, cEq } = resolvePhysicsParameters(
+    ambientPm25,
+    roomId,
+    filtrationId
+  );
   const points = sampleRoomCleanPoints(ambientPm25, roomId, filtrationId, SAMPLE_STEP_MINUTES);
 
   const startPm25 = round1(c0);
-  const endPm25At120Min = points.at(-1)?.pm25 ?? round1(evaluateIndoorPm25AtMinute(c0, cEq, totalAch, HORIZON_MINUTES));
+  const endPm25At120Min =
+    points.at(-1)?.pm25 ?? round1(evaluateIndoorPm25AtMinute(c0, cEq, totalAch, HORIZON_MINUTES));
   const equilibriumPm25 = round1(cEq);
 
   let minutesToSafe: number | null;

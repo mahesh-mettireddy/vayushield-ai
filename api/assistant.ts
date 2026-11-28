@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from './_lib/httpTypes.js';
 import { generatePlanWithFailover } from './_lib/providers.js';
 import { AssistantRequestSchema, checkRateLimit, extractClientIp } from './_lib/schemas.js';
 
+/** Maximum allowed UTF-8 request body size for `POST /api/assistant` (16 KB). */
 export const MAX_ASSISTANT_BODY_BYTES = 16 * 1024;
 
 function exceedsPayloadLimit(req: VercelRequest): boolean {
@@ -28,6 +29,10 @@ function exceedsPayloadLimit(req: VercelRequest): boolean {
   return false;
 }
 
+/**
+ * Vercel serverless POST endpoint generating grounded daily air-quality routines
+ * via the 4-tier LLM failover orchestrator.
+ */
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Cache-Control', 'no-store');
@@ -39,7 +44,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
 
   const clientIp = extractClientIp(req);
-  const rate = checkRateLimit(clientIp, 20, 5 * 60 * 1000);
+  const rate = checkRateLimit(`assist:${clientIp}`, 20, 5 * 60 * 1000);
   if (!rate.allowed) {
     res.setHeader('Retry-After', String(rate.retryAfterSec));
     res.status(429).json({ error: 'Too many requests. Please wait a moment and try again.' });
@@ -63,7 +68,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
   const parsed = AssistantRequestSchema.safeParse(body);
   if (!parsed.success) {
-    res.status(400).json({ error: 'Invalid assistant request payload.', details: parsed.error.flatten() });
+    res
+      .status(400)
+      .json({ error: 'Invalid assistant request payload.', details: parsed.error.flatten() });
     return;
   }
 
