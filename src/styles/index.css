@@ -222,15 +222,16 @@ details[open] > summary .details-arrow { rotate: 180deg; }
 .room-clean-stats dt { color: var(--muted); font-size: .73rem; }
 .room-clean-stats dd { margin-top: .15rem; color: var(--teal); font-size: 1.08rem; font-weight: 750; font-variant-numeric: tabular-nums; }
 .room-clean-stats small { font-size: .74rem; font-weight: 600; color: var(--muted); }
-.room-curve-chart { margin-top: .85rem; padding: .55rem .55rem .35rem; border: 1px solid var(--line); border-radius: 12px; background: var(--white); }
+.room-curve-chart { margin-top: .85rem; padding: .6rem .65rem .4rem; border: 1px solid var(--line); border-radius: 12px; background: var(--white); }
+.room-chart-header { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: 0 .35rem .25rem; color: var(--muted); font-size: .74rem; font-weight: 700; }
 .room-curve-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
 .room-grid-line { stroke: #dfeae5; stroke-width: 1; }
 .room-grid-vertical { stroke-dasharray: 2 4; }
 .room-axis-label { fill: var(--muted); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .room-axis-good { fill: #0c6b4d; font-weight: 750; }
-.room-axis-unit { fill: var(--muted); font-size: 10.5px; font-weight: 650; }
 .room-good-threshold { stroke: #0c7a57; stroke-width: 1.6; stroke-dasharray: 6 5; }
-.room-good-label { fill: #0c6b4d; font-size: 11px; font-weight: 700; }
+.room-good-pill { fill: rgba(255, 255, 255, .88); stroke: #b8ddd0; stroke-width: 1; }
+.room-good-label { fill: #0c6b4d; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .room-curve-area { animation: curve-fade 550ms ease-out both; }
 .room-curve-line { stroke: #116456; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 100; stroke-dashoffset: 0; animation: curve-draw 850ms cubic-bezier(.22, .75, .28, 1) both; }
 @keyframes curve-draw { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }

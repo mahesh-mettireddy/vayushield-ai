@@ -142,6 +142,7 @@ describe('App Integration & WCAG Accessibility', () => {
     const roomSimulator = screen.getByRole('region', { name: 'Bedroom Time-to-Clean Simulator' });
     const curveChart = within(roomSimulator).getByRole('img', { name: /Bedroom PM2\.5 decay chart/i });
     expect(curveChart).toBeVisible();
+    expect(curveChart.querySelector('.room-curve-line')).toHaveAttribute('pathLength', '100');
     await user.click(within(roomSimulator).getByRole('button', { name: 'Small Bedroom' }));
     expect(within(roomSimulator).getByRole('button', { name: 'Small Bedroom' })).toHaveAttribute('aria-pressed', 'true');
     await user.click(within(roomSimulator).getByRole('button', { name: 'True HEPA Purifier' }));

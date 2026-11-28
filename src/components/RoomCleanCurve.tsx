@@ -10,11 +10,12 @@ import {
 import type { FiltrationSetupId, RoomSizeId } from '../types/airQuality';
 
 const VIEW_WIDTH = 640;
-const VIEW_HEIGHT = 248;
-const PAD = { top: 26, right: 24, bottom: 38, left: 52 };
+const VIEW_HEIGHT = 256;
+const PAD = { top: 32, right: 24, bottom: 38, left: 52 };
 const PLOT_WIDTH = VIEW_WIDTH - PAD.left - PAD.right;
 const PLOT_HEIGHT = VIEW_HEIGHT - PAD.top - PAD.bottom;
 const X_TICKS = [0, 30, 60, 90, 120];
+const GOOD_PILL_WIDTH = 148;
 
 interface RoomCleanCurveProps {
   ambientPm25: number;
@@ -54,6 +55,8 @@ export function RoomCleanCurve({ ambientPm25, hasTelemetry }: RoomCleanCurveProp
     : 0;
   const badgeY = safeDotY !== null ? (safeDotY < PAD.top + 38 ? safeDotY + 14 : safeDotY - 32) : 0;
   const placeThresholdLeft = safeDotX !== null && safeDotX >= PAD.left + PLOT_WIDTH - 190;
+  const goodPillX = placeThresholdLeft ? PAD.left + 8 : PAD.left + PLOT_WIDTH - GOOD_PILL_WIDTH - 6;
+  const curveAnimationKey = `${roomId}-${filtrationId}`;
 
   const chartAriaLabel = minutesToSafe === 0
     ? `Bedroom PM2.5 decay chart for ${room.label} with ${filtration.label}: starting indoor PM2.5 is ${startPm25} µg/m³, already within the ${targetPm25} µg/m³ CPCB Good limit.`
@@ -134,6 +137,10 @@ export function RoomCleanCurve({ ambientPm25, hasTelemetry }: RoomCleanCurveProp
       </dl>
 
       <div className="room-curve-chart" role="img" aria-label={chartAriaLabel}>
+        <div className="room-chart-header" aria-hidden="true">
+          <span>Indoor PM2.5 (µg/m³)</span>
+          <span>0–120 min timeline</span>
+        </div>
         <svg viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`} aria-hidden="true" focusable="false">
           <defs>
             <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
@@ -175,8 +182,6 @@ export function RoomCleanCurve({ ambientPm25, hasTelemetry }: RoomCleanCurveProp
             );
           })}
 
-          <text x={14} y={PAD.top + 10} className="room-axis-unit">µg/m³</text>
-
           {/* Dashed emerald reference line at CPCB Good (30 µg/m³) */}
           <line
             x1={PAD.left}
@@ -185,19 +190,9 @@ export function RoomCleanCurve({ ambientPm25, hasTelemetry }: RoomCleanCurveProp
             y2={yTarget}
             className="room-good-threshold"
           />
-          <text
-            x={placeThresholdLeft ? PAD.left + 6 : PAD.left + PLOT_WIDTH - 4}
-            y={yTarget - 6}
-            textAnchor={placeThresholdLeft ? 'start' : 'end'}
-            className="room-good-label"
-          >
-            CPCB Good · {targetPm25} µg/m³
-          </text>
 
-          <g key={`${roomId}-${filtrationId}-${Math.round(ambientPm25)}`}>
-            <path d={areaPath} fill={`url(#${gradientId})`} className="room-curve-area" />
-            <path d={linePath} fill="none" pathLength={100} className="room-curve-line" />
-          </g>
+          <path key={`area-${curveAnimationKey}`} d={areaPath} fill={`url(#${gradientId})`} className="room-curve-area" />
+          <path key={`line-${curveAnimationKey}`} d={linePath} fill="none" pathLength={100} className="room-curve-line" />
 
           {points.map((point) => (
             <circle
@@ -208,6 +203,25 @@ export function RoomCleanCurve({ ambientPm25, hasTelemetry }: RoomCleanCurveProp
               className="room-sample-dot"
             />
           ))}
+
+          <g className="room-good-callout">
+            <rect
+              x={goodPillX}
+              y={yTarget + 2}
+              width={GOOD_PILL_WIDTH}
+              height={17}
+              rx={8.5}
+              className="room-good-pill"
+            />
+            <text
+              x={goodPillX + GOOD_PILL_WIDTH / 2}
+              y={yTarget + 14}
+              textAnchor="middle"
+              className="room-good-label"
+            >
+              CPCB Good · {targetPm25} µg/m³
+            </text>
+          </g>
 
           {safeDotX !== null && safeDotY !== null && (
             <g className="room-safe-callout">
