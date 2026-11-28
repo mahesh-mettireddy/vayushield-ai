@@ -17,7 +17,7 @@ export const COMMUTE_MODES: readonly CommuteMode[] = [
 ];
 
 /** Emission factors in kg CO₂ per passenger-kilometer (standard urban transport benchmarks). */
-export const COMMUTE_EMISSION_KG_PER_KM: Record<CommuteMode, number> = {
+const COMMUTE_EMISSION_KG_PER_KM: Record<CommuteMode, number> = {
   solo_car: 0.192,
   scooter: 0.084,
   bus: 0.068,
@@ -93,6 +93,15 @@ const HABIT_IMPACT_RULES: ReadonlyArray<HabitImpactRule> = [
 
 const WORKDAYS_PER_YEAR = 240;
 const KG_CO2_PER_MATURE_TREE_YEAR = 21;
+const KG_PER_TONNE = 1000;
+const COOKING_ANNUAL_CO2_KG = 85;
+const COMMUTE_EXPOSURE_RESIDUAL = 0.92;
+const COMMUTE_EXPOSURE_DELTA_PCT = 8;
+const BASELINE_INDOOR_BLENDED_FACTOR = 0.78;
+const MAX_EXPOSURE_REDUCTION_PCT = 92;
+const MIN_AMBIENT_PM25_UG_M3 = 5;
+const FALLBACK_AMBIENT_PM25_UG_M3 = 50;
+const MAX_COMMUTE_KM = 200;
 
 function computeCommuteImpact(
   safeCommuteKm: number,
@@ -111,11 +120,11 @@ function computeCommuteImpact(
   }
   return {
     dailyCo2SavedKg,
-    residualMultiplier: 0.92,
+    residualMultiplier: COMMUTE_EXPOSURE_RESIDUAL,
     item: {
       label: `Commute Swap: ${COMMUTE_LABELS[profile.baselineCommute]} → ${COMMUTE_LABELS[profile.chosenCommute]}`,
       detail: `Avoids ${dailyCo2SavedKg.toFixed(2)} kg CO₂/day (${annualCommuteCo2} kg/yr) and trims roadside exhaust exposure.`,
-      exposureDeltaPct: 8,
+      exposureDeltaPct: COMMUTE_EXPOSURE_DELTA_PCT,
       co2SavedKgPerYear: annualCommuteCo2
     }
   };
@@ -128,7 +137,7 @@ export function calculateCommunityImpact(annualCo2SavedKg: number, households: n
   const annualCo2Kg = perHouseholdKg * count;
   return {
     households: count,
-    annualCo2Tonnes: annualCo2Kg / 1000,
+    annualCo2Tonnes: annualCo2Kg / KG_PER_TONNE,
     annualCo2Kg,
     treesEquivalent: Math.round((annualCo2Kg / KG_CO2_PER_MATURE_TREE_YEAR) * 10) / 10
   };
@@ -143,13 +152,17 @@ export function calculateChoiceImpact(
   profile: HouseholdProfile,
   toggles: ChoiceToggles
 ): ChoiceImpactResult {
-  const safeAmbient = Math.max(5, Number.isFinite(ambientPm25) ? ambientPm25 : 50);
+  const safeAmbient = Math.max(
+    MIN_AMBIENT_PM25_UG_M3,
+    Number.isFinite(ambientPm25) ? ambientPm25 : FALLBACK_AMBIENT_PM25_UG_M3
+  );
   const safeCommuteKm = Math.max(
     0,
-    Math.min(200, Number.isFinite(profile.commuteKm) ? profile.commuteKm : 0)
+    Math.min(MAX_COMMUTE_KM, Number.isFinite(profile.commuteKm) ? profile.commuteKm : 0)
   );
   // Typical unmitigated indoor/outdoor blended personal exposure ≈ 78% of ambient PM2.5
-  const baselineDailyExposureUgM3 = Math.round(safeAmbient * 0.78 * 10) / 10;
+  const baselineDailyExposureUgM3 =
+    Math.round(safeAmbient * BASELINE_INDOOR_BLENDED_FACTOR * 10) / 10;
 
   let residualFactor = 1.0;
   const breakdown: ImpactBreakdownItem[] = [];
@@ -169,10 +182,14 @@ export function calculateChoiceImpact(
   if (commute.item) breakdown.push(commute.item);
 
   const annualCo2SavedKg = Math.round(
-    commute.dailyCo2SavedKg * WORKDAYS_PER_YEAR + (toggles.cleanCookingExhaust ? 85 : 0)
+    commute.dailyCo2SavedKg * WORKDAYS_PER_YEAR +
+      (toggles.cleanCookingExhaust ? COOKING_ANNUAL_CO2_KG : 0)
   );
   const dailyCo2SavedKg = Math.round((annualCo2SavedKg / WORKDAYS_PER_YEAR) * 100) / 100;
-  const exposureReductionPct = Math.max(0, Math.min(92, Math.round((1 - residualFactor) * 100)));
+  const exposureReductionPct = Math.max(
+    0,
+    Math.min(MAX_EXPOSURE_REDUCTION_PCT, Math.round((1 - residualFactor) * 100))
+  );
   const projectedDailyExposureUgM3 =
     Math.round(baselineDailyExposureUgM3 * (1 - exposureReductionPct / 100) * 10) / 10;
 

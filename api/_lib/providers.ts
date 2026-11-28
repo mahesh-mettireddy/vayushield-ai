@@ -10,6 +10,8 @@ import {
 
 export type { ProviderEnv } from './providerAdapters.js';
 
+const OVERALL_FAILOVER_DEADLINE_MS = 110_000;
+
 const GEMINI_MODELS = [
   { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
   { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
@@ -121,7 +123,7 @@ export async function generatePlanWithFailover(
 ): Promise<AssistantPlan> {
   const { system, user } = buildPrompts(req);
   // Leave time to return the built-in plan before Vercel ends the request.
-  const deadline = AbortSignal.timeout(110000);
+  const deadline = AbortSignal.timeout(OVERALL_FAILOVER_DEADLINE_MS);
   const diagnostics: string[] = [];
 
   const livePlan =

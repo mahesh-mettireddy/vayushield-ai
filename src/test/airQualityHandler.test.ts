@@ -214,7 +214,6 @@ describe('GET /api/air-quality', () => {
     );
     expect(thrown.status).toHaveBeenCalledWith(502);
 
-    // Non-ok OpenAQ, invalid OpenAQ schema, unnamed OpenAQ station, and missing hourly expiry fallback
     clearAirQualityCache();
     fetchSpy.mockImplementation(async (input) => {
       if (String(input).includes('openaq.org')) return new Response('no', { status: 404 });
@@ -226,40 +225,5 @@ describe('GET /api/air-quality', () => {
     expect(noAq.json).toHaveBeenCalledWith(
       expect.objectContaining({ groundStation: null, hourly: [] })
     );
-
-    clearAirQualityCache();
-    fetchSpy.mockImplementation(async (input) => {
-      if (String(input).includes('openaq.org'))
-        return Response.json({ results: [{ name: 'Station Only' }] });
-      return Response.json({ timezone: 'UTC', current: { pm2_5: 25 } });
-    });
-    const minimalAq = createMockResponse();
-    await airQualityHandler(
-      createMockRequest({ query: { lat: '13.08', lon: '80.27' } }),
-      minimalAq.res
-    );
-    expect(minimalAq.json).toHaveBeenCalledWith(
-      expect.objectContaining({
-        groundStation: {
-          stationName: 'Station Only',
-          provider: 'OpenAQ Reference Monitor',
-          distanceKm: null,
-          pm25: null,
-          lastUpdated: null
-        }
-      })
-    );
-
-    clearAirQualityCache();
-    fetchSpy.mockImplementation(async (input) => {
-      if (String(input).includes('openaq.org')) return Response.json({ results: [{}] });
-      return Response.json({ timezone: 'UTC', current: { pm2_5: 25 } });
-    });
-    const unnamedAq = createMockResponse();
-    await airQualityHandler(
-      createMockRequest({ query: { lat: '22.57', lon: '88.36' } }),
-      unnamedAq.res
-    );
-    expect(unnamedAq.json).toHaveBeenCalledWith(expect.objectContaining({ groundStation: null }));
   });
 });

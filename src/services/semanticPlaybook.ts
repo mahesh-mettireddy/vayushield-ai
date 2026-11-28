@@ -7,13 +7,15 @@ export interface RankedPlaybookTip {
   mode: 'keyword' | 'hf-wasm';
 }
 
+const SCORE_SCALE = 100;
+
 /** Shape of tensor output returned by Hugging Face Transformers feature extraction pipelines. */
-export interface FeatureTensorLike {
+interface FeatureTensorLike {
   data: Float32Array | number[] | ArrayLike<number>;
 }
 
 /** Function interface for a browser WASM sentence-embedding extractor. */
-export type FeatureExtractor = (
+type FeatureExtractor = (
   text: string,
   options?: { pooling?: 'mean'; normalize?: boolean }
 ) => Promise<FeatureTensorLike>;
@@ -135,7 +137,10 @@ export async function rankPlaybookWithLocalHf(
     const docVec = extractVector(await extractor(docText, { pooling: 'mean', normalize: true }));
     scored.push({
       tip,
-      score: Math.max(0, Math.round(cosineSimilarity(queryVec, docVec) * 100) / 100),
+      score: Math.max(
+        0,
+        Math.round(cosineSimilarity(queryVec, docVec) * SCORE_SCALE) / SCORE_SCALE
+      ),
       mode: 'hf-wasm'
     });
   }

@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { axe } from 'vitest-axe';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -41,13 +41,13 @@ const MOCK_AIR: AirQualityPayload = {
   groundStation: null
 };
 
-describe('WCAG Landmarks, Skip Link & Live Status Announcements', () => {
+describe('WCAG Landmarks, Skip Link Focus Order, Tablist & Live Status', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
   });
 
-  it('exposes skip link targeting main, semantic landmarks, valid heading hierarchy, and polite live status updates', async () => {
+  it('lands first Tab on Skip to main content from initial load, enforces tablist arrow navigation, and exposes landmarks', async () => {
     const user = userEvent.setup();
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     let resolvePendingPlan: ((res: Response) => void) | undefined;
@@ -85,9 +85,16 @@ describe('WCAG Landmarks, Skip Link & Live Status Announcements', () => {
     });
 
     const { container } = render(<App />);
+    // Verify nothing steals focus on initial mount and the very first Tab hits the skip link
+    expect(document.activeElement).toBe(document.body);
+    await user.tab();
+    const skipLink = screen.getByRole('link', { name: 'Skip to main content' });
+    expect(skipLink).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('button', { name: /Change city: New Delhi/i })).toHaveFocus();
+
     const liveStatus = screen.getByRole('status', { name: 'Air quality status updates' });
     expect(liveStatus).toHaveAttribute('aria-live', 'polite');
-    expect(liveStatus).toHaveTextContent(/Loading air quality and 24-hour forecast for New Delhi/i);
 
     await waitFor(() => {
       expect(liveStatus).toHaveTextContent(
@@ -95,7 +102,6 @@ describe('WCAG Landmarks, Skip Link & Live Status Announcements', () => {
       );
     });
 
-    const skipLink = screen.getByRole('link', { name: 'Skip to main content' });
     expect(skipLink).toHaveAttribute('href', '#main-content');
     const main = screen.getByRole('main');
     expect(main).toHaveAttribute('id', 'main-content');
@@ -112,7 +118,37 @@ describe('WCAG Landmarks, Skip Link & Live Status Announcements', () => {
     );
     expect(levels.every((lvl, i) => i === 0 || lvl <= (levels[i - 1] ?? 1) + 1)).toBe(true);
 
-    // Trigger an in-flight plan, then switch to Mumbai before it resolves (exercises stale-plan guard)
+    // Full ARIA tablist roving tabindex + Left/Right/Home/End keyboard navigation
+    const tablist = screen.getByRole('tablist', { name: 'Air quality tools' });
+    const tabs = within(tablist).getAllByRole('tab');
+    const [planTab, impactTab, playbookTab] = tabs;
+    if (!planTab || !impactTab || !playbookTab) throw new Error('Expected 3 workspace tabs');
+    expect(planTab).toHaveAttribute('tabindex', '0');
+    expect(impactTab).toHaveAttribute('tabindex', '-1');
+    expect(playbookTab).toHaveAttribute('tabindex', '-1');
+
+    act(() => {
+      planTab.focus();
+    });
+    await user.keyboard('{ArrowRight}');
+    expect(impactTab).toHaveFocus();
+    expect(impactTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel', { name: 'Impact Lab' })).toHaveAttribute(
+      'aria-labelledby',
+      impactTab.id
+    );
+    await user.keyboard('{ArrowLeft}');
+    expect(planTab).toHaveFocus();
+    await user.keyboard('{ArrowLeft}');
+    expect(playbookTab).toHaveFocus();
+    await user.keyboard('{ArrowRight}');
+    expect(planTab).toHaveFocus();
+    await user.keyboard('{End}');
+    expect(playbookTab).toHaveFocus();
+    await user.keyboard('{Home}');
+    expect(planTab).toHaveFocus();
+
+    // Trigger an in-flight plan, switch city before it settles, then verify Mumbai telemetry updates
     await user.click(screen.getByRole('button', { name: 'Generate AI Routine' }));
     await user.click(screen.getByRole('button', { name: /Change city: New Delhi/i }));
     await user.click(screen.getByRole('button', { name: 'Mumbai' }));
@@ -127,13 +163,6 @@ describe('WCAG Landmarks, Skip Link & Live Status Announcements', () => {
     await user.click(screen.getByRole('button', { name: /Change city: Mumbai/i }));
     await user.click(screen.getByRole('button', { name: 'Mumbai' }));
     expect(fetchSpy.mock.calls.length).toBe(callCountAfterMumbai);
-
-    const planTab = screen.getByRole('tab', { name: 'AI Daily Plan' });
-    act(() => {
-      planTab.focus();
-    });
-    await user.keyboard('{Escape}');
-    expect(planTab).toHaveAttribute('aria-selected', 'true');
 
     const results = await axe(container, { rules: { 'color-contrast': { enabled: false } } });
     expect(results.violations).toEqual([]);

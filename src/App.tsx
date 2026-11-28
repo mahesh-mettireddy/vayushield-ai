@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { BookOpen, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { AppFooter, AppHeader } from './components/AppHeader';
 import { AqiHero } from './components/AqiHero';
 import { ChoiceImpactSimulator } from './components/ChoiceImpactSimulator';
 import { PlaybookSearch } from './components/PlaybookSearch';
 import { RoutinePlanner } from './components/RoutinePlanner';
+import { WorkspaceTabs } from './components/WorkspaceTabs';
 import { PRESET_CITIES } from './data/presets';
 import { POLLUTANT_LABELS } from './engine/cpcbAqi';
 import { calculateChoiceImpact } from './engine/impactCalculator';
@@ -16,6 +16,8 @@ import type {
   HouseholdProfile,
   LocationOption
 } from './types/airQuality';
+
+const SAMPLE_PM25_UG_M3 = 120;
 
 const DEFAULT_PROFILE: HouseholdProfile = {
   householdMembers: ['Children', 'Daily Commuters'],
@@ -34,12 +36,6 @@ const DEFAULT_TOGGLES: ChoiceToggles = {
   publicTransitOrWfhSwap: true,
   zeroSmokeIndoor: false
 };
-
-const TABS = [
-  { id: 'plan', label: 'AI Daily Plan', icon: Sparkles },
-  { id: 'impact', label: 'Impact Lab', icon: SlidersHorizontal },
-  { id: 'playbook', label: 'Playbook & Local HF', icon: BookOpen }
-] as const;
 
 const DEFAULT_CITY: LocationOption = PRESET_CITIES[0] ?? {
   name: 'New Delhi',
@@ -62,14 +58,6 @@ function buildStatusAnnouncement(
   return `${air.location.name} air quality loaded: CPCB NAQI ${air.cpcb.aqi}, ${air.cpcb.category}. Dominant pollutant ${dominantName}.`;
 }
 
-function resolveNextTabIndex(current: number, key: string): number | null {
-  if (key === 'Home') return 0;
-  if (key === 'End') return TABS.length - 1;
-  if (key === 'ArrowRight') return (current + 1) % TABS.length;
-  if (key === 'ArrowLeft') return (current + TABS.length - 1) % TABS.length;
-  return null;
-}
-
 /** Root VayuShield AI application shell coordinating telemetry, planning, impact modeling, and WCAG landmarks. */
 export default function App() {
   const [selected, setSelected] = useState<LocationOption>(DEFAULT_CITY);
@@ -83,33 +71,39 @@ export default function App() {
   const [planLoading, setPlanLoading] = useState(false);
   const [tabIndex, setTabIndex] = useState(0);
   const planRequest = useRef(0);
-  const tabButtons = useRef<Array<HTMLButtonElement | null>>([]);
-  const impact = calculateChoiceImpact(air?.current.pm25 ?? 120, profile, toggles);
+  const planController = useRef<AbortController | null>(null);
+  const impact = calculateChoiceImpact(air?.current.pm25 ?? SAMPLE_PM25_UG_M3, profile, toggles);
   const statusAnnouncement = buildStatusAnnouncement(selected, air, airLoading, airError);
 
   useEffect(() => {
-    let active = true;
-    fetchAirQuality(selected)
+    const controller = new AbortController();
+    fetchAirQuality(selected, controller.signal)
       .then(
         (data) => {
-          if (active) setAir(data);
+          if (!controller.signal.aborted) setAir(data);
         },
         () => {
-          if (active) setAirError(true);
+          if (!controller.signal.aborted) setAirError(true);
         }
       )
       .finally(() => {
-        if (active) setAirLoading(false);
+        if (!controller.signal.aborted) setAirLoading(false);
       });
-    return () => {
-      active = false;
-    };
+    return () => controller.abort();
   }, [selected, refresh]);
+
+  useEffect(() => {
+    return () => {
+      planController.current?.abort();
+    };
+  }, []);
 
   function selectCity(city: LocationOption) {
     if (city.name === selected.name && city.lat === selected.lat && city.lon === selected.lon)
       return;
     planRequest.current += 1;
+    planController.current?.abort();
+    planController.current = null;
     setSelected(city);
     setAir(null);
     setAirLoading(true);
@@ -127,6 +121,9 @@ export default function App() {
   async function generatePlan(userQuestion: string) {
     if (!air || airLoading || planLoading) return;
     const request = ++planRequest.current;
+    planController.current?.abort();
+    const controller = new AbortController();
+    planController.current = controller;
     setPlanLoading(true);
     try {
       const result = await requestAssistantPlan({
@@ -134,11 +131,14 @@ export default function App() {
         profile,
         impact,
         activeChoices: impact.breakdown.map((choice) => choice.label),
-        userQuestion
+        userQuestion,
+        signal: controller.signal
       });
-      if (request === planRequest.current) setPlan(result);
+      if (request === planRequest.current && !controller.signal.aborted) setPlan(result);
+    } catch {
+      // Aborted requests are superseded by city switches or unmount.
     } finally {
-      if (request === planRequest.current) setPlanLoading(false);
+      if (request === planRequest.current && !controller.signal.aborted) setPlanLoading(false);
     }
   }
 
@@ -155,13 +155,13 @@ export default function App() {
       profile={profile}
       toggles={toggles}
       impact={impact}
-      ambientPm25={air?.current.pm25 ?? 120}
+      ambientPm25={air?.current.pm25 ?? SAMPLE_PM25_UG_M3}
       hasTelemetry={Boolean(air)}
       onProfileChange={setProfile}
       onToggleChange={setToggles}
     />,
     <PlaybookSearch />
-  ];
+  ] as const;
 
   return (
     <>
@@ -201,54 +201,7 @@ export default function App() {
             {airLoading && <p>Loading air quality and forecast…</p>}
           </section>
         )}
-        <section className="workspace" aria-label="Air quality workspace">
-          <div
-            className="workspace-tabs"
-            role="tablist"
-            aria-label="Air quality tools"
-            data-active-tab={tabIndex}
-          >
-            <span className="tab-indicator" aria-hidden="true" />
-            {TABS.map(({ id, label, icon: Icon }, index) => (
-              <button
-                type="button"
-                id={'tab-' + id}
-                key={id}
-                role="tab"
-                ref={(button) => {
-                  tabButtons.current[index] = button;
-                }}
-                aria-selected={tabIndex === index}
-                aria-controls={'panel-' + id}
-                tabIndex={tabIndex === index ? 0 : -1}
-                onClick={() => setTabIndex(index)}
-                onKeyDown={(event) => {
-                  const next = resolveNextTabIndex(index, event.key);
-                  if (next === null) return;
-                  event.preventDefault();
-                  setTabIndex(next);
-                  tabButtons.current[next]?.focus();
-                }}
-              >
-                <Icon size={17} aria-hidden="true" />
-                <span>{label}</span>
-              </button>
-            ))}
-          </div>
-          {TABS.map(({ id }, index) => (
-            <div
-              id={'panel-' + id}
-              key={id}
-              role="tabpanel"
-              aria-labelledby={'tab-' + id}
-              className="workspace-panel"
-              tabIndex={0}
-              hidden={tabIndex !== index}
-            >
-              {panels[index]}
-            </div>
-          ))}
-        </section>
+        <WorkspaceTabs tabIndex={tabIndex} onSelectTab={setTabIndex} panels={panels} />
       </main>
       <AppFooter />
     </>

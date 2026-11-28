@@ -4,6 +4,8 @@ import { AssistantRequestSchema, checkRateLimit, extractClientIp } from './_lib/
 
 /** Maximum allowed UTF-8 request body size for `POST /api/assistant` (16 KB). */
 export const MAX_ASSISTANT_BODY_BYTES = 16 * 1024;
+const ASSISTANT_RATE_LIMIT_MAX = 20;
+const ASSISTANT_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
 
 function exceedsPayloadLimit(req: VercelRequest): boolean {
   const headerLength = req.headers['content-length'];
@@ -44,7 +46,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
 
   const clientIp = extractClientIp(req);
-  const rate = checkRateLimit(`assist:${clientIp}`, 20, 5 * 60 * 1000);
+  const rate = checkRateLimit(
+    `assist:${clientIp}`,
+    ASSISTANT_RATE_LIMIT_MAX,
+    ASSISTANT_RATE_LIMIT_WINDOW_MS
+  );
   if (!rate.allowed) {
     res.setHeader('Retry-After', String(rate.retryAfterSec));
     res.status(429).json({ error: 'Too many requests. Please wait a moment and try again.' });

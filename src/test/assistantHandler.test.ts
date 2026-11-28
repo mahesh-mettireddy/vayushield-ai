@@ -63,9 +63,8 @@ describe('POST /api/assistant', () => {
     expect(setHeader).toHaveBeenCalledWith('Allow', 'POST');
   });
 
-  it.each([SAMPLE_REQ, JSON.stringify(SAMPLE_REQ)])(
-    'accepts object and raw JSON assistant requests',
-    async (body) => {
+  it('accepts object and raw JSON requests and enforces the 16 KB payload limit', async () => {
+    for (const body of [SAMPLE_REQ, JSON.stringify(SAMPLE_REQ)]) {
       for (const key of Object.keys(ENV)) vi.stubEnv(key, '');
       const { res, status, json } = createMockResponse();
       await assistantHandler(createMockRequest({ method: 'POST', body }), res);
@@ -74,9 +73,7 @@ describe('POST /api/assistant', () => {
         expect.objectContaining({ provider: 'deterministic-fallback' })
       );
     }
-  );
 
-  it('enforces the 16 KB payload limit across string, Buffer, header, and circular objects', async () => {
     const parseSpy = vi.spyOn(JSON, 'parse');
     const oversized = '{"userQuestion":"' + 'x'.repeat(MAX_ASSISTANT_BODY_BYTES + 100) + '"}';
     const strRes = createMockResponse();
@@ -85,43 +82,24 @@ describe('POST /api/assistant', () => {
     expect(strRes.json).toHaveBeenCalledWith({ error: 'Request payload exceeds the 16 KB limit.' });
     expect(parseSpy).not.toHaveBeenCalled();
 
-    const bufRes = createMockResponse();
-    await assistantHandler(
-      createMockRequest({
-        method: 'POST',
-        body: Buffer.alloc(MAX_ASSISTANT_BODY_BYTES + 1, 97)
-      }),
-      bufRes.res
-    );
-    expect(bufRes.status).toHaveBeenCalledWith(413);
-
     const circular: Record<string, unknown> = {};
     circular.self = circular;
-    const circRes = createMockResponse();
-    await assistantHandler(createMockRequest({ method: 'POST', body: circular }), circRes.res);
-    expect(circRes.status).toHaveBeenCalledWith(413);
-
-    const headerOver = createMockResponse();
-    await assistantHandler(
-      createMockRequest({
-        method: 'POST',
+    for (const reqInit of [
+      { body: Buffer.alloc(MAX_ASSISTANT_BODY_BYTES + 1, 97) },
+      { body: circular },
+      {
         headers: { 'content-length': String(MAX_ASSISTANT_BODY_BYTES + 1) },
         body: SAMPLE_REQ
-      }),
-      headerOver.res
-    );
-    expect(headerOver.status).toHaveBeenCalledWith(413);
-
-    const uintRes = createMockResponse();
-    await assistantHandler(
-      createMockRequest({
-        method: 'POST',
+      },
+      {
         headers: { 'content-length': ['bad'] },
         body: new Uint8Array(MAX_ASSISTANT_BODY_BYTES + 1)
-      }),
-      uintRes.res
-    );
-    expect(uintRes.status).toHaveBeenCalledWith(413);
+      }
+    ]) {
+      const { res, status } = createMockResponse();
+      await assistantHandler(createMockRequest({ method: 'POST', ...reqInit }), res);
+      expect(status).toHaveBeenCalledWith(413);
+    }
   });
 
   it('returns 400 for malformed JSON, missing body, and invalid request schema', async () => {

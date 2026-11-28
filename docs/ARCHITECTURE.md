@@ -1,5 +1,7 @@
 # VayuShield AI architecture
 
+**Live Deployment:** [https://vayushield-ai-rose.vercel.app/](https://vayushield-ai-rose.vercel.app/)
+
 VayuShield AI uses React 19, Vite, TypeScript, and Tailwind CSS for the frontend, wrapped in a top-level [`ErrorBoundary`](../src/components/ErrorBoundary.tsx). Vercel Node 22 ESM Functions serve the API routes under [`api/`](../api/).
 
 ---
@@ -8,25 +10,25 @@ VayuShield AI uses React 19, Vite, TypeScript, and Tailwind CSS for the frontend
 
 ```text
 Browser (React 19 + Vite + TypeScript + Tailwind CSS, wrapped in ErrorBoundary)
-  ├── LocationBar (Open-Meteo Geocoding via /api/air-quality?q=... or city presets + geolocation)
+  ├── AppHeader & LocationBar (Open-Meteo Geocoding via /api/air-quality?q=... or presets + geolocation)
   ├── AqiHero (CPCB NAQI SVG radial gauge 0–500, 6 bands, dominant pollutant, Family Alert, sensor disclosure)
   ├── CleanAirWindowCard (24-hour NAQI bar chart -> lowest and highest two-hour averages)
-  ├── RoutinePlanner (Calls POST /api/assistant -> structured JSON routine + indoor hacks + sustainable swaps)
-  ├── ChoiceImpactSimulator (Deterministic PM2.5 exposure, CO2 savings, Community Scale, RoomCleanCurve)
-  │     └── RoomCleanCurve -> RoomCleanChartSvg + roomCleanChartGeometry (0–120m bedroom ACH decay SVG)
-  └── PlaybookSearch (Keyword + optional lazy-loaded @huggingface/transformers WASM embeddings)
+  └── WorkspaceTabs (roving-tabindex ARIA tablist switching between 3 tools)
+        ├── RoutinePlanner (Calls POST /api/assistant -> structured JSON routine + indoor hacks + swaps)
+        ├── ChoiceImpactSimulator -> ChoiceImpactCards & RoomCleanCurve (ACH physics SVG)
+        └── PlaybookSearch (Keyword + optional lazy-loaded @huggingface/transformers WASM embeddings)
           │
           ▼ HTTPS (Same-origin, zero CORS issues on Vercel)
 Vercel Serverless Functions (/api/*)
   ├── GET  /api/air-quality?lat=&lon=&city= | ?q=
-  │     ├── Bounded IP rate limit (60 req / 5 min) + Zod query & upstream validation
+  │     ├── Bounded IP rate limit (60 req / 5 min) + strict Zod bounds & upstream validation (upstream.ts)
   │     ├── Open-Meteo Air Quality & Geocoding API (hourly PM2.5, PM10, NO2, SO2, O3, CO; timezone=auto)
   │     ├── Optional OpenAQ v3 /locations provenance overlay (if OPENAQ_API_KEY env var is present)
   │     └── BoundedTtlCache (max 500 entries; expires after 15 minutes or first forecast hour)
   ├── GET  /api/health (service status and boolean provider configuration flags, no-store)
   └── POST /api/assistant
         ├── 16 KB pre-parse body cap (413) + bounded IP rate limiter (20 req / 5 min, 429 + Retry-After)
-        ├── Zod request validation + prompt sanitization across all user/profile/choice fields
+        ├── Strict Zod request validation + prompt sanitization across all user/profile/choice fields
         ├── Failover Chain (promptBuilder.ts + providerAdapters.ts -> providers.ts):
         │     1. Gemini 2.5 Flash -> 2.0 Flash -> 2.5 Flash-Lite (GEMINI_API_KEY)
         │     2. Hugging Face Inference Providers router.huggingface.co/v1 (HF_TOKEN)
@@ -127,8 +129,8 @@ Pure deterministic single-zone exponential decay model estimating how long indoo
 
 ## 5. Tests and CI
 
-- **Automated Test Suites (`src/test/`)**:
+- **Automated Test Suites (`22` suites, `110` tests in `src/test/`)**:
   - Domain engines: `cpcbAqi.test.ts`, `cleanAirWindow.test.ts`, `impactCalculator.test.ts`, `roomCleanPhysics.test.ts`, `communityAlert.test.ts`, `engineCoverage.test.ts`
-  - API & infrastructure: `boundedCache.test.ts`, `providerFailover.test.ts`, `providerAdapters.test.ts`, `assistantHandler.test.ts`, `airQualityHandler.test.ts`, `healthHandler.test.ts`
-  - Client services & UI/a11y: `airQualityClient.test.ts`, `semanticPlaybook.test.ts`, `ErrorBoundary.test.tsx`, `components.test.tsx`, `impactAndPlanner.test.tsx`, `App.a11y.test.tsx`, `App.keyboard.test.tsx`, `App.landmarks.test.tsx`
-- **CI (`.github/workflows/ci.yml`)**: Runs `npm ci`, `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run test:coverage`, `npm audit --omit=dev`, `npm run build`, and enforces repo size `< 10 MB`.
+  - API & infrastructure: `boundedCache.test.ts`, `providerFailover.test.ts`, `providerAdapters.test.ts`, `assistantHandler.test.ts`, `airQualityHandler.test.ts`, `healthHandler.test.ts`, `apiValidation.test.ts`
+  - Client services & UI/a11y: `airQualityClient.test.ts`, `semanticPlaybook.test.ts`, `abortAndTimeout.test.tsx`, `ErrorBoundary.test.tsx`, `components.test.tsx`, `impactAndPlanner.test.tsx`, `App.a11y.test.tsx`, `App.keyboard.test.tsx`, `App.landmarks.test.tsx`
+- **CI (`.github/workflows/ci.yml`)**: Runs under `permissions: { contents: read }` with `npm ci`, `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run test:coverage` (`99.23%` stmts, `95.11%` branches, `99.65%` funcs, `99.81%` lines), `npm audit --omit=dev`, `npm run build`, and enforces repo size `< 10 MB`.

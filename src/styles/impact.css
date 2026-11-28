@@ -55,7 +55,7 @@
   transition: width 590ms cubic-bezier(0.24, 1.17, 0.37, 1);
 }
 .exposure-after .exposure-fill {
-  fill: #178367;
+  fill: #127158;
 }
 .carbon-result {
   display: flex;

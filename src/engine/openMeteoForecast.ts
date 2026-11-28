@@ -65,6 +65,10 @@ function readHourlyPollutants(
   };
 }
 
+const MS_PER_SECOND = 1000;
+const MS_PER_HOUR = 3_600_000;
+const FORECAST_HOURS_COUNT = 24;
+
 function buildUpcomingHourly(
   forecast: OpenMeteoAirData['hourly'],
   timezone: string,
@@ -72,7 +76,7 @@ function buildUpcomingHourly(
   now: number
 ): HourlyAirPoint[] {
   if (!forecast) return [];
-  const firstUpcoming = forecast.time.findIndex((time) => time * 1000 > now);
+  const firstUpcoming = forecast.time.findIndex((time) => time * MS_PER_SECOND > now);
   if (firstUpcoming < 0) return [];
 
   const hourLabel = new Intl.DateTimeFormat('en-US', {
@@ -81,18 +85,20 @@ function buildUpcomingHourly(
     hour12: true
   });
 
-  return forecast.time.slice(firstUpcoming, firstUpcoming + 24).map((time, offset) => {
-    const readings = readHourlyPollutants(forecast, firstUpcoming + offset, current);
-    const timestamp = time * 1000;
-    return {
-      time: new Date(timestamp).toISOString(),
-      hourLabel: hourLabel.format(timestamp),
-      endHourLabel: hourLabel.format(timestamp + 3_600_000),
-      pm25: Math.round(readings.pm25 * 10) / 10,
-      pm10: Math.round(readings.pm10 * 10) / 10,
-      aqi: calculateCpcbAqi(readings).aqi
-    };
-  });
+  return forecast.time
+    .slice(firstUpcoming, firstUpcoming + FORECAST_HOURS_COUNT)
+    .map((time, offset) => {
+      const readings = readHourlyPollutants(forecast, firstUpcoming + offset, current);
+      const timestamp = time * MS_PER_SECOND;
+      return {
+        time: new Date(timestamp).toISOString(),
+        hourLabel: hourLabel.format(timestamp),
+        endHourLabel: hourLabel.format(timestamp + MS_PER_HOUR),
+        pm25: Math.round(readings.pm25 * 10) / 10,
+        pm10: Math.round(readings.pm10 * 10) / 10,
+        aqi: calculateCpcbAqi(readings).aqi
+      };
+    });
 }
 
 /** Builds the Open-Meteo Air Quality forecast URL for the given coordinates. */

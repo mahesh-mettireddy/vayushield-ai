@@ -31,6 +31,16 @@ function PlaybookTipDisclosure({ tip }: { tip: PlaybookTip }) {
   );
 }
 
+/** Ensures external playbook source links strictly use `https:` URLs. */
+export function getSafeExternalHref(rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl);
+    return parsed.protocol === 'https:' ? parsed.toString() : '#';
+  } catch {
+    return '#';
+  }
+}
+
 function PlaybookTipCard({ item }: { item: RankedPlaybookTip }) {
   const { tip, mode, score } = item;
   return (
@@ -42,7 +52,7 @@ function PlaybookTipCard({ item }: { item: RankedPlaybookTip }) {
       <h3>{tip.title}</h3>
       <p>{tip.summary}</p>
       <PlaybookTipDisclosure tip={tip} />
-      <a href={tip.sourceUrl} target="_blank" rel="noopener noreferrer">
+      <a href={getSafeExternalHref(tip.sourceUrl)} target="_blank" rel="noopener noreferrer">
         {tip.sourceLabel}
         <span className="sr-only"> (opens in a new tab)</span>
         <ExternalLink size={13} aria-hidden="true" />

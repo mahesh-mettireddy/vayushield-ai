@@ -10,8 +10,13 @@ export interface ProviderEnv {
   GROQ_API_KEY?: string;
 }
 
+const LLM_TEMPERATURE = 0.3;
+const GEMINI_TIMEOUT_MS = 20_000;
+const HF_TIMEOUT_MS = 20_000;
+const GROQ_TIMEOUT_MS = 15_000;
+
 /** Provider model identifier paired with its user-facing display label. */
-export interface ProviderModel {
+interface ProviderModel {
   id: string;
   label: string;
 }
@@ -111,12 +116,12 @@ export async function callGemini(
       systemInstruction: { parts: [{ text: system }] },
       contents: [{ role: 'user', parts: [{ text: user }] }],
       generationConfig: {
-        temperature: 0.3,
+        temperature: LLM_TEMPERATURE,
         responseMimeType: 'application/json',
         ...(model.id === 'gemini-2.0-flash' ? {} : { thinkingConfig: { thinkingBudget: 0 } })
       }
     }),
-    signal: AbortSignal.any([deadline, AbortSignal.timeout(20000)])
+    signal: AbortSignal.any([deadline, AbortSignal.timeout(GEMINI_TIMEOUT_MS)])
   });
 
   if (!res.ok) {
@@ -158,14 +163,17 @@ export async function callOpenAiCompatible(
     },
     body: JSON.stringify({
       model: model.id,
-      temperature: 0.3,
+      temperature: LLM_TEMPERATURE,
       ...(provider === 'groq' ? { response_format: { type: 'json_object' } } : {}),
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user }
       ]
     }),
-    signal: AbortSignal.any([deadline, AbortSignal.timeout(provider === 'groq' ? 15000 : 20000)])
+    signal: AbortSignal.any([
+      deadline,
+      AbortSignal.timeout(provider === 'groq' ? GROQ_TIMEOUT_MS : HF_TIMEOUT_MS)
+    ])
   });
 
   if (!res.ok) {

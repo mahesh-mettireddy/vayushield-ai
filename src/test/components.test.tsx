@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CleanAirWindowCard } from '../components/CleanAirWindowCard';
 import { LocationBar } from '../components/LocationBar';
-import { PlaybookSearch } from '../components/PlaybookSearch';
+import { PlaybookSearch, getSafeExternalHref } from '../components/PlaybookSearch';
 import { PRESET_CITIES } from '../data/presets';
 import { resetSemanticExtractorCache } from '../services/semanticPlaybook';
 
@@ -222,5 +222,9 @@ describe('Interactive UI Components', () => {
       expect(screen.getByRole('button', { name: 'Local HF Semantic Match (WASM)' })).toBeEnabled();
     });
     expect(screen.queryByText('Match 100%')).not.toBeInTheDocument();
+
+    expect(getSafeExternalHref('https://openaq.org/')).toBe('https://openaq.org/');
+    expect(getSafeExternalHref('javascript:alert(1)')).toBe('#');
+    expect(getSafeExternalHref('not a url')).toBe('#');
   });
 });

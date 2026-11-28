@@ -7,6 +7,11 @@ interface WindowPair {
   avgAqi: number;
 }
 
+const MS_PER_HOUR = 3_600_000;
+const MODERATE_AQI_CAP = 100;
+const POOR_AQI_MIN = 200;
+const MAX_EXPOSURE_SAVINGS_PCT = 95;
+
 const UNAVAILABLE_WINDOW = {
   startLabel: 'Unavailable',
   endLabel: 'Unavailable',
@@ -27,7 +32,7 @@ function endOfHour(point: HourlyAirPoint): string {
 function buildWindowPairs(hourly: HourlyAirPoint[]): WindowPair[] {
   return hourly.flatMap((start, index) => {
     const end = hourly[index + 1];
-    if (!end || Date.parse(end.time) - Date.parse(start.time) !== 3_600_000) return [];
+    if (!end || Date.parse(end.time) - Date.parse(start.time) !== MS_PER_HOUR) return [];
     return [
       {
         startLabel: start.hourLabel,
@@ -40,8 +45,9 @@ function buildWindowPairs(hourly: HourlyAirPoint[]): WindowPair[] {
 }
 
 function getBestWindowAdvice(bestAqi: number): string {
-  if (bestAqi <= 100) return 'A good time for a walk, errands, or a short period of ventilation.';
-  if (bestAqi <= 200)
+  if (bestAqi <= MODERATE_AQI_CAP)
+    return 'A good time for a walk, errands, or a short period of ventilation.';
+  if (bestAqi <= POOR_AQI_MIN)
     return 'Choose this time for brief errands and limit strenuous outdoor activity if sensitive.';
   return 'This is the lowest forecast NAQI, but pollution remains elevated. Keep trips brief and windows closed.';
 }
@@ -55,8 +61,8 @@ export function formatWindowRange(window: { startLabel: string; endLabel: string
 
 /** Returns short outdoor guidance for a peak forecast NAQI value. */
 export function getPeakWindowAdvice(aqi: number): string {
-  if (aqi <= 100) return 'Normal outdoor activity is generally fine.';
-  if (aqi <= 200)
+  if (aqi <= MODERATE_AQI_CAP) return 'Normal outdoor activity is generally fine.';
+  if (aqi <= POOR_AQI_MIN)
     return 'Sensitive groups should take extra care and limit prolonged outdoor exertion.';
   return 'Keep windows closed during the peak and wear a well-fitted N95 if heading outside.';
 }
@@ -86,7 +92,10 @@ export function analyzeCleanAirWindows(hourly: HourlyAirPoint[]): CleanAirWindow
 
   const exposureSavingsPct =
     worst.avgPm25 > 0
-      ? Math.max(0, Math.min(95, Math.round((1 - best.avgPm25 / worst.avgPm25) * 100)))
+      ? Math.max(
+          0,
+          Math.min(MAX_EXPOSURE_SAVINGS_PCT, Math.round((1 - best.avgPm25 / worst.avgPm25) * 100))
+        )
       : 0;
   const bestAqi = Math.round(best.avgAqi);
   const worstAqi = Math.round(worst.avgAqi);

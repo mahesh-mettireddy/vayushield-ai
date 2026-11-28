@@ -133,6 +133,9 @@ const CATEGORY_META_BANDS: ReadonlyArray<{
   }
 ];
 
+const MAX_CPCB_AQI = 500;
+const CO_UG_TO_MG_DIVISOR = 1000;
+
 const SEVERE_META: { category: AqiCategory; advisory: string } = {
   category: 'Severe',
   advisory:
@@ -149,11 +152,11 @@ export function calculatePollutantSubIndex(pollutant: PollutantKey, concentratio
     if (concentration <= band.bpHi) {
       const interpolated =
         ((band.iHi - band.iLo) / (band.bpHi - band.bpLo)) * (concentration - band.bpLo) + band.iLo;
-      return Math.min(500, Math.max(0, Math.round(interpolated)));
+      return Math.min(MAX_CPCB_AQI, Math.max(0, Math.round(interpolated)));
     }
   }
 
-  return 500;
+  return MAX_CPCB_AQI;
 }
 
 /** Maps a CPCB NAQI score (0–500) to its health category label and advisory message. */
@@ -165,7 +168,7 @@ export function getCpcbCategoryMeta(aqi: number): { category: AqiCategory; advis
 /** Computes overall India CPCB NAQI, dominant pollutant, sub-indices, and health advisory. */
 export function calculateCpcbAqi(readings: PollutantReadings): CpcbAqiResult {
   // Convert raw Open-Meteo CO (µg/m³) to CPCB NAQI unit (mg/m³)
-  const coMgM3 = Math.max(0, readings.coUgM3) / 1000;
+  const coMgM3 = Math.max(0, readings.coUgM3) / CO_UG_TO_MG_DIVISOR;
 
   const subIndices: Record<PollutantKey, number> = {
     pm25: calculatePollutantSubIndex('pm25', readings.pm25),
@@ -187,7 +190,7 @@ export function calculateCpcbAqi(readings: PollutantReadings): CpcbAqiResult {
     }
   }
 
-  const aqi = Math.min(500, Math.max(0, maxAqi));
+  const aqi = Math.min(MAX_CPCB_AQI, Math.max(0, maxAqi));
   const meta = getCpcbCategoryMeta(aqi);
 
   return {

@@ -15,9 +15,9 @@
   --white: #fff;
   --soft: #eff6f3;
   --shadow: 0 18px 48px -34px #142f2b80;
-  --aqi-good: #25876a;
+  --aqi-good: #1d755b;
   --aqi-satisfactory: #5c791d;
-  --aqi-moderate: #a66a12;
+  --aqi-moderate: #935b0b;
   --aqi-poor: #bd572e;
   --aqi-very-poor: #a4413d;
   --aqi-severe: #852f5a;
@@ -69,7 +69,8 @@ summary {
   color: var(--ink);
   font-weight: 700;
 }
-.skip-link:focus {
+.skip-link:focus,
+.skip-link:focus-visible {
   top: 1rem;
 }
 .main-layout:focus {

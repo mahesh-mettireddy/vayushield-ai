@@ -40,6 +40,20 @@ export function extractClientIp(req: Pick<VercelRequest, 'headers' | 'socket'>):
   return resolved.slice(0, 64);
 }
 
+const LAT_MIN = -90;
+const LAT_MAX = 90;
+const LON_MIN = -180;
+const LON_MAX = 180;
+const DEFAULT_RATE_LIMIT_MAX = 20;
+const DEFAULT_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
+const MS_PER_SECOND = 1000;
+
+function coordinateSchema(min: number, max: number) {
+  return z
+    .union([z.number(), z.string().trim().min(1).transform(Number)])
+    .pipe(z.number().finite().min(min).max(max));
+}
+
 /** Zod schema validating upstream Open-Meteo air-quality responses. */
 export const OpenMeteoAirDataSchema = z.object({
   timezone: z.string().min(1),
@@ -66,47 +80,57 @@ export const OpenMeteoAirDataSchema = z.object({
     .optional()
 });
 
-/** Zod schema validating `/api/air-quality` query parameters (either `q` search or `lat`/`lon`). */
+/** Zod schema validating `/api/air-quality` query parameters (either strict `q` search or bounded `lat`/`lon`). */
 export const AirQualityQuerySchema = z.union([
-  z.object({
-    q: z.string().trim().min(2).max(80)
-  }),
-  z.object({
-    lat: z.coerce.number().min(-90).max(90),
-    lon: z.coerce.number().min(-180).max(180),
-    city: z.string().trim().min(1).max(80).optional(),
-    region: z.string().trim().max(80).optional(),
-    country: z.string().trim().max(80).optional()
-  })
+  z
+    .object({
+      q: z.string().trim().min(2).max(80)
+    })
+    .strict(),
+  z
+    .object({
+      lat: coordinateSchema(LAT_MIN, LAT_MAX),
+      lon: coordinateSchema(LON_MIN, LON_MAX),
+      city: z.string().trim().min(1).max(80).optional(),
+      region: z.string().trim().max(80).optional(),
+      country: z.string().trim().max(80).optional()
+    })
+    .strict()
 ]);
 
 /** Zod schema validating `POST /api/assistant` request payloads. */
-export const AssistantRequestSchema = z.object({
-  city: z.string().trim().min(1).max(80),
-  aqi: z.number().min(0).max(500),
-  category: z.string().trim().min(1).max(32),
-  dominantPollutant: z.string().trim().min(1).max(16),
-  pm25: z.number().min(0).max(2000),
-  pm10: z.number().min(0).max(4000),
-  bestWindowLabel: z.string().trim().min(1).max(40),
-  worstWindowLabel: z.string().trim().min(1).max(40),
-  worstWindowAqi: z.number().min(0).max(500).optional(),
-  profile: z.object({
-    householdMembers: z.array(z.string().trim().max(40)).max(6),
-    commuteMode: z.string().trim().min(1).max(30),
-    baselineCommuteLabel: z.string().trim().min(1).max(50).optional(),
-    chosenCommuteLabel: z.string().trim().min(1).max(50).optional(),
-    commuteKm: z.number().min(0).max(200),
-    homeType: z.enum(['apartment', 'independent_house', 'shared_flat']),
-    budgetTier: z.enum(['zero_cost', 'budget_diy', 'standard'])
-  }),
-  activeChoices: z.array(z.string().trim().max(80)).max(10),
-  impactSummary: z.object({
-    exposureReductionPct: z.number().min(0).max(100),
-    annualCo2SavedKg: z.number().min(0).max(50000)
-  }),
-  userQuestion: z.string().max(300).optional()
-});
+export const AssistantRequestSchema = z
+  .object({
+    city: z.string().trim().min(1).max(80),
+    aqi: z.number().finite().min(0).max(500),
+    category: z.string().trim().min(1).max(32),
+    dominantPollutant: z.string().trim().min(1).max(16),
+    pm25: z.number().finite().min(0).max(2000),
+    pm10: z.number().finite().min(0).max(4000),
+    bestWindowLabel: z.string().trim().min(1).max(40),
+    worstWindowLabel: z.string().trim().min(1).max(40),
+    worstWindowAqi: z.number().finite().min(0).max(500).optional(),
+    profile: z
+      .object({
+        householdMembers: z.array(z.string().trim().max(40)).max(6),
+        commuteMode: z.string().trim().min(1).max(30),
+        baselineCommuteLabel: z.string().trim().min(1).max(50).optional(),
+        chosenCommuteLabel: z.string().trim().min(1).max(50).optional(),
+        commuteKm: z.number().finite().min(0).max(200),
+        homeType: z.enum(['apartment', 'independent_house', 'shared_flat']),
+        budgetTier: z.enum(['zero_cost', 'budget_diy', 'standard'])
+      })
+      .strict(),
+    activeChoices: z.array(z.string().trim().max(80)).max(10),
+    impactSummary: z
+      .object({
+        exposureReductionPct: z.number().finite().min(0).max(100),
+        annualCo2SavedKg: z.number().finite().min(0).max(50000)
+      })
+      .strict(),
+    userQuestion: z.string().max(300).optional()
+  })
+  .strict();
 
 export type AssistantRequest = z.infer<typeof AssistantRequestSchema>;
 
@@ -168,14 +192,14 @@ export function resetRateLimitCache(): void {
   rateLimitMap.clear();
 }
 
-/** Enforces a bounded per-key sliding/fixed TTL rate limit and reports `Retry-After` seconds. */
+/** Enforces a bounded per-key fixed-window TTL rate limit and reports `Retry-After` seconds. */
 export function checkRateLimit(
   clientKey: string,
-  limit = 20,
-  windowMs = 5 * 60 * 1000
+  limit = DEFAULT_RATE_LIMIT_MAX,
+  windowMs = DEFAULT_RATE_LIMIT_WINDOW_MS
 ): { allowed: boolean; retryAfterSec: number } {
   if (limit <= 0) {
-    return { allowed: false, retryAfterSec: Math.max(1, Math.ceil(windowMs / 1000)) };
+    return { allowed: false, retryAfterSec: Math.max(1, Math.ceil(windowMs / MS_PER_SECOND)) };
   }
 
   const now = Date.now();
@@ -189,7 +213,7 @@ export function checkRateLimit(
   if (existing.value >= limit) {
     return {
       allowed: false,
-      retryAfterSec: Math.max(1, Math.ceil((existing.expiresAt - now) / 1000))
+      retryAfterSec: Math.max(1, Math.ceil((existing.expiresAt - now) / MS_PER_SECOND))
     };
   }
 

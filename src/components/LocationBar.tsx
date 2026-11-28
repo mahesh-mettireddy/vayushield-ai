@@ -9,6 +9,9 @@ interface LocationBarProps {
   onSelect: (loc: LocationOption) => void;
 }
 
+const GEOLOCATION_TIMEOUT_MS = 8_000;
+const MIN_SEARCH_QUERY_LEN = 2;
+
 /** Accessible city selector popover supporting presets, Open-Meteo geocoding search, and geolocation. */
 export function LocationBar({ selected, onSelect }: LocationBarProps) {
   const [open, setOpen] = useState(false);
@@ -20,12 +23,21 @@ export function LocationBar({ selected, onSelect }: LocationBarProps) {
   const trigger = useRef<HTMLButtonElement>(null);
   const citySearch = useRef<HTMLInputElement>(null);
   const geolocationRequest = useRef(0);
+  const searchController = useRef<AbortController | null>(null);
 
   const closePopover = useCallback((restoreTriggerFocus: boolean) => {
     setOpen(false);
     geolocationRequest.current += 1;
+    searchController.current?.abort();
+    searchController.current = null;
     setNotice('');
     if (restoreTriggerFocus) trigger.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      searchController.current?.abort();
+    };
   }, []);
 
   useEffect(() => {
@@ -58,18 +70,28 @@ export function LocationBar({ selected, onSelect }: LocationBarProps) {
   async function search(event: FormEvent) {
     event.preventDefault();
     const clean = query.trim();
-    if (clean.length < 2) return;
+    if (clean.length < MIN_SEARCH_QUERY_LEN) return;
+    searchController.current?.abort();
+    const controller = new AbortController();
+    searchController.current = controller;
     setNotice('');
     setSearching(true);
     setResults([]);
     try {
-      const found = await searchLocations(clean);
-      setResults(found);
-      if (!found.length) setNotice('No cities found. Try a different spelling.');
+      const found = await searchLocations(clean, controller.signal);
+      if (!controller.signal.aborted) {
+        setResults(found);
+        if (!found.length) setNotice('No cities found. Try a different spelling.');
+      }
     } catch {
-      setNotice('City search is unavailable. Choose a nearby preset.');
+      if (!controller.signal.aborted) {
+        setNotice('City search is unavailable. Choose a nearby preset.');
+      }
     } finally {
-      setSearching(false);
+      if (searchController.current === controller) {
+        searchController.current = null;
+        setSearching(false);
+      }
     }
   }
 
@@ -96,7 +118,7 @@ export function LocationBar({ selected, onSelect }: LocationBarProps) {
         if (request === geolocationRequest.current)
           setNotice('Location is unavailable. Search or choose a city.');
       },
-      { timeout: 8000 }
+      { timeout: GEOLOCATION_TIMEOUT_MS }
     );
   }
 
