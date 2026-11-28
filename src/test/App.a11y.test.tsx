@@ -138,6 +138,17 @@ describe('App Integration & WCAG Accessibility', () => {
     fireEvent.change(householdSlider, { target: { value: '200' } });
     expect(householdSlider).toHaveAttribute('aria-valuetext', '200 households');
     expect(within(community).getByText('143')).toBeVisible();
+
+    const roomSimulator = screen.getByRole('region', { name: 'Bedroom Time-to-Clean Simulator' });
+    const curveChart = within(roomSimulator).getByRole('img', { name: /Bedroom PM2\.5 decay chart/i });
+    expect(curveChart).toBeVisible();
+    await user.click(within(roomSimulator).getByRole('button', { name: 'Small Bedroom' }));
+    expect(within(roomSimulator).getByRole('button', { name: 'Small Bedroom' })).toHaveAttribute('aria-pressed', 'true');
+    await user.click(within(roomSimulator).getByRole('button', { name: 'True HEPA Purifier' }));
+    expect(within(roomSimulator).getByRole('button', { name: 'True HEPA Purifier' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(roomSimulator).getByText(/Start your True HEPA Purifier/i)).toBeVisible();
+    await user.click(within(roomSimulator).getByRole('button', { name: 'Windows Sealed Only' }));
+    expect(within(roomSimulator).getByText(/Sealed windows alone cannot reach 30 µg\/m³/i)).toBeVisible();
     await checkAccessibility();
 
     impactTab!.focus();

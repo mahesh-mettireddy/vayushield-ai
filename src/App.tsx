@@ -96,7 +96,8 @@ export default function App() {
   const panels = [
     <RoutinePlanner profile={profile} plan={plan} loading={planLoading} ready={Boolean(air) && !airLoading}
       onProfileChange={setProfile} onGenerate={generatePlan} />,
-    <ChoiceImpactSimulator profile={profile} toggles={toggles} impact={impact} hasTelemetry={Boolean(air)}
+    <ChoiceImpactSimulator profile={profile} toggles={toggles} impact={impact}
+      ambientPm25={air?.current.pm25 ?? 120} hasTelemetry={Boolean(air)}
       onProfileChange={setProfile} onToggleChange={setToggles} />,
     <PlaybookSearch />
   ];

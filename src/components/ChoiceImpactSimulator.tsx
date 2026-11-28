@@ -2,6 +2,7 @@ import { Building2, Trees } from 'lucide-react';
 import { useState, type CSSProperties } from 'react';
 import { calculateChoiceImpact, calculateCommunityImpact, COMMUTE_LABELS } from '../engine/impactCalculator';
 import type { ChoiceImpactResult, ChoiceToggles, CommuteMode, HouseholdProfile } from '../types/airQuality';
+import { RoomCleanCurve } from './RoomCleanCurve';
 
 const HABITS: Array<{ key: keyof ChoiceToggles; label: string }> = [
   { key: 'hepaOrCorsiRosenthal', label: 'HEPA or DIY filtration' },
@@ -23,12 +24,13 @@ interface SimulatorProps {
   profile: HouseholdProfile;
   toggles: ChoiceToggles;
   impact: ChoiceImpactResult;
+  ambientPm25?: number;
   hasTelemetry: boolean;
   onProfileChange: (profile: HouseholdProfile) => void;
   onToggleChange: (toggles: ChoiceToggles) => void;
 }
 
-export function ChoiceImpactSimulator({ profile, toggles, impact, hasTelemetry, onProfileChange, onToggleChange }: SimulatorProps) {
+export function ChoiceImpactSimulator({ profile, toggles, impact, ambientPm25 = 120, hasTelemetry, onProfileChange, onToggleChange }: SimulatorProps) {
   const [households, setHouseholds] = useState(1);
   const community = calculateCommunityImpact(impact.annualCo2SavedKg, households);
   const exposure = [
@@ -132,6 +134,8 @@ export function ChoiceImpactSimulator({ profile, toggles, impact, hasTelemetry, 
           <div><dt>Mature-tree equivalents per year</dt><dd>{community.treesEquivalent.toLocaleString('en-IN')}</dd></div>
         </dl>
       </section>
+
+      <RoomCleanCurve ambientPm25={ambientPm25} hasTelemetry={hasTelemetry} />
 
       {impact.breakdown.length > 0 && <details className="impact-breakdown">
         <summary>How the estimates are calculated</summary>

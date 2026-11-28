@@ -120,6 +120,47 @@ export interface ChoiceImpactResult {
   breakdown: ImpactBreakdownItem[];
 }
 
+export type RoomSizeId = 'small_bedroom' | 'master_bedroom' | 'living_room';
+export type FiltrationSetupId = 'sealed_only' | 'corsi_rosenthal' | 'true_hepa';
+
+export interface RoomSizePreset {
+  id: RoomSizeId;
+  label: string;
+  shortLabel: string;
+  areaSqFt: number;
+  ceilingFt: number;
+  volumeCuFt: number;
+  volumeM3: number;
+}
+
+export interface FiltrationPreset {
+  id: FiltrationSetupId;
+  label: string;
+  shortLabel: string;
+  cadrM3h: number;
+  equilibriumFactor: number;
+  summary: string;
+}
+
+export interface RoomCleanPoint {
+  minute: number;
+  pm25: number;
+}
+
+export interface RoomCleanSimulation {
+  room: RoomSizePreset;
+  filtration: FiltrationPreset;
+  ambientPm25: number;
+  points: RoomCleanPoint[];
+  startPm25: number;
+  endPm25At120Min: number;
+  equilibriumPm25: number;
+  ach: number;
+  targetPm25: 30;
+  minutesToSafe: number | null;
+  headline: string;
+}
+
 export type LlmProviderName = 'gemini' | 'huggingface' | 'groq' | 'deterministic-fallback';
 
 export interface RoutineStep {

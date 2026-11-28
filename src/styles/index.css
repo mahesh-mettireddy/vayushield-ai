@@ -206,6 +206,47 @@ details[open] > summary .details-arrow { rotate: 180deg; }
 @media (max-width: 650px) {
   .community-scale { grid-template-columns: minmax(0, 1fr); }
 }
+.room-clean-card { margin-top: 1rem; padding: .95rem; border: 1px solid var(--line); border-radius: 14px; background: #f8fcfa; }
+.room-clean-header { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; }
+.room-clean-header h3 { display: flex; align-items: center; gap: .45rem; font-size: .96rem; font-weight: 750; }
+.room-clean-header h3 svg { color: var(--teal); flex: none; }
+.room-clean-header p { margin-top: .2rem; color: var(--muted); font-size: .79rem; line-height: 1.45; }
+.room-ach-badge { display: inline-flex; align-items: center; gap: .35rem; flex: none; padding: .3rem .65rem; border: 1px solid #9ec7b8; border-radius: 99px; background: #e6f4ed; color: #104d42; font-size: .77rem; font-weight: 750; font-variant-numeric: tabular-nums; }
+.room-clean-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .85rem 1.1rem; margin-top: .9rem; }
+.room-control-group { display: grid; gap: .42rem; align-content: start; }
+.control-label { font-size: .79rem; font-weight: 750; color: var(--ink); }
+.control-meta { color: var(--muted); font-size: .74rem; }
+.room-clean-headline { margin-top: .85rem; padding: .7rem .85rem; border: 1px solid #bcd7cc; border-radius: 11px; background: #ebf6f0; color: #12483e; font-size: .86rem; font-weight: 650; line-height: 1.45; }
+.room-clean-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .55rem; margin-top: .75rem; }
+.room-clean-stats > div { padding: .6rem .75rem; border: 1px solid var(--line); border-radius: 10px; background: var(--white); }
+.room-clean-stats dt { color: var(--muted); font-size: .73rem; }
+.room-clean-stats dd { margin-top: .15rem; color: var(--teal); font-size: 1.08rem; font-weight: 750; font-variant-numeric: tabular-nums; }
+.room-clean-stats small { font-size: .74rem; font-weight: 600; color: var(--muted); }
+.room-curve-chart { margin-top: .85rem; padding: .55rem .55rem .35rem; border: 1px solid var(--line); border-radius: 12px; background: var(--white); }
+.room-curve-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.room-grid-line { stroke: #dfeae5; stroke-width: 1; }
+.room-grid-vertical { stroke-dasharray: 2 4; }
+.room-axis-label { fill: var(--muted); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.room-axis-good { fill: #0c6b4d; font-weight: 750; }
+.room-axis-unit { fill: var(--muted); font-size: 10.5px; font-weight: 650; }
+.room-good-threshold { stroke: #0c7a57; stroke-width: 1.6; stroke-dasharray: 6 5; }
+.room-good-label { fill: #0c6b4d; font-size: 11px; font-weight: 700; }
+.room-curve-area { animation: curve-fade 550ms ease-out both; }
+.room-curve-line { stroke: #116456; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 100; stroke-dashoffset: 0; animation: curve-draw 850ms cubic-bezier(.22, .75, .28, 1) both; }
+@keyframes curve-draw { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
+@keyframes curve-fade { from { opacity: 0; } to { opacity: 1; } }
+.room-sample-dot { fill: #116456; stroke: #ffffff; stroke-width: 1.25; }
+.room-safe-callout { animation: curve-fade 450ms ease-out 220ms both; }
+.room-safe-guide { stroke: #0c7a57; stroke-width: 1.25; stroke-dasharray: 3 3; opacity: .7; }
+.room-safe-halo { fill: #0c7a57; opacity: .18; }
+.room-safe-dot { fill: #0c7a57; stroke: #ffffff; stroke-width: 2; }
+.room-safe-badge { fill: #10694f; }
+.room-safe-badge-text { fill: #ffffff; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.room-clean-note { margin-top: .65rem; color: var(--muted); font-size: .74rem; line-height: 1.45; }
+@media (max-width: 650px) {
+  .room-clean-controls { grid-template-columns: minmax(0, 1fr); }
+  .room-clean-stats { grid-template-columns: minmax(0, 1fr); }
+}
 .commute-fields { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .6rem; }
 .commute-fields label { font-weight: 650; font-size: .8rem; }
 .commute-fields select, .commute-fields input { display: block; width: 100%; margin-top: .3rem; }
@@ -393,7 +434,7 @@ details[open] > summary .details-arrow { rotate: 180deg; }
 }
 @media (prefers-reduced-motion: reduce) {
   .ambient-glow, .air-particle, .gauge-arc, .naqi-bar, .hour-content, .workspace-panel:not([hidden]), .provider-badge[data-live="true"],
-  .skeleton-card::after, .timeline li { animation: none !important; }
+  .skeleton-card::after, .timeline li, .room-curve-line, .room-curve-area, .room-safe-callout { animation: none !important; }
   .gauge-arc, .tab-indicator, .bar-column::before, .naqi-bar, .exposure-track i, .habit-row,
   .switch-track, .switch-track::after, .carbon-arc { transition: none !important; }
 }

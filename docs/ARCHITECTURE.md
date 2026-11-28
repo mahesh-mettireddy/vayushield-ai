@@ -81,6 +81,14 @@ Pure deterministic model translating household choices into verifiable daily/ann
   - `zeroSmokeIndoor`: models a `15%` reduction in indoor PM2.5 from avoiding incense and smoke-producing mosquito coils.
   - Outputs: `baselineDailyExposureUgM3`, `projectedDailyExposureUgM3`, `exposureReductionPct`, `dailyCo2SavedKg`, `annualCo2SavedKg`, and human-readable impact rationale per toggle.
 
+### 2.4 Bedroom Time-to-Clean ACH Physics Simulator (`src/engine/roomCleanPhysics.ts`)
+Pure deterministic single-zone exponential decay model estimating how long indoor PM2.5 takes to reach India's CPCB **Good** ceiling (`30 µg/m³`) across room volumes and filtration setups:
+- **Decay Model**: $C(t) = C_{eq} + (C_0 - C_{eq}) \cdot e^{-\text{ACH} \cdot (t / 60)}$, sampled every 10 minutes from `t = 0` to `120` min (`13` points).
+- **Initial Indoor PM2.5**: $C_0 = \max(5, 0.78 \cdot \text{ambientPm25})$.
+- **Room Presets (9 ft ceiling)**: `small_bedroom` (`1,080 cu ft` / `30.6 m³`), `master_bedroom` (`1,800 cu ft` / `51.0 m³`), `living_room` (`2,880 cu ft` / `81.6 m³`).
+- **Filtration Presets**: `sealed_only` (`CADR = 0 m³/h`, `ACH = 0.5`, `equilibriumFactor = 0.65`), `corsi_rosenthal` (`CADR = 340 m³/h`, `equilibriumFactor = 0.18`), `true_hepa` (`CADR = 260 m³/h`, `equilibriumFactor = 0.14`), where $\text{totalAch} = \max(0.5, \text{CADR} / V + 0.4)$ and $C_{eq} = \max(4, \text{ambientPm25} \cdot \text{equilibriumFactor})$.
+- **Outputs**: 13 sampled curve points, `startPm25`, `endPm25At120Min`, `ach`, `targetPm25: 30`, integer `minutesToSafe` (`0` if already `<= 30`, `null` if unreachable in 120 min), and a plain-English actionable `headline`.
+
 ---
 
 ## 3. API Contracts & Security (`api/`)
@@ -148,8 +156,10 @@ Returns `ok` and Boolean flags for Gemini, Hugging Face, Groq, and OpenAQ config
 - **Unit Tests**:
   - `src/test/cpcbAqi.test.ts`: Exact boundary values, decimal boundary continuity (`30.4`), CO `µg/m³ → mg/m³` conversion, severe clamping (`> 500`), dominant pollutant selection.
   - `src/test/cleanAirWindow.test.ts`: Finds true minimum/maximum 2-hour windows, handles flat series and short arrays gracefully.
-  - `src/test/impactCalculator.test.ts`: Commute CO₂ math, multiplicative indoor exposure cap (`<= 92%`), zero-km edge cases.
+  - `src/test/impactCalculator.test.ts`: Commute CO₂ math, multiplicative indoor exposure cap (`<= 92%`), zero-km edge cases, and `Community Scale` household multiplier precision.
+  - `src/test/roomCleanPhysics.test.ts`: Safe-air `0`-minute floor, 13-point monotonic PM2.5 decay, severe smog (`180 µg/m³`) filtration separation, and room-volume scaling.
+  - `src/test/communityAlert.test.ts`: WhatsApp/family alert formatter across clean, peak, and unavailable forecast windows.
   - `src/test/providerFailover.test.ts`: Verifies Gemini → Hugging Face Router → Groq → Deterministic fallback order and schema validation.
 - **UI & Accessibility Tests**:
-  - `src/test/App.a11y.test.tsx` renders the app with mocked telemetry, generates a fallback routine, and checks the result with `vitest-axe`.
+  - `src/test/App.a11y.test.tsx` renders the app with mocked telemetry, exercises the interactive forecast chart, Routine Planner, Impact Lab (including `Community Scale` and `RoomCleanCurve`), and Playbook Search, and validates zero violations with `vitest-axe`.
 - **CI (`.github/workflows/ci.yml`)**: Runs `npm ci`, `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`, and enforces repo size `< 10 MB`.
